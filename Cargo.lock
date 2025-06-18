@@ -5944,6 +5944,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-tasks"
+version = "0.1.0"
+dependencies = [
+ "frame-benchmarking",
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-template"
 version = "0.1.0"
 dependencies = [
