@@ -1,0 +1,44 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "/root/sck/Cargo.toml"
+    ],
+    "rust-analyzer.cargo.targetDir": "target/rust-analyzer",
+    "rust-analyzer.server.extraEnv": {
+        "SKIP_WASM_BUILD": "1"
+    },
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.checkOnSave": true,
+    "rust-analyzer.cargo.loadOutDirsFromCheck": true,
+    "rust-analyzer.files.excludeDirs": [
+        "target",
+        ".git",
+        "node_modules",
+        "frontend/node_modules"
+    ],
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.diagnostics.enable": true,
+    "rust-analyzer.lens.enable": false,
+    "rust-analyzer.inlayHints.enable": false,
+    "rust-analyzer.cargo.extraEnv": {
+        "CHALK_OVERFLOW_DEPTH": "100000000",
+        "CHALK_SOLVER_MAX_SIZE": "10000000"
+    },
+    "rust-analyzer.procMacro.ignored": {
+        "async-trait": [
+            "async_trait"
+        ],
+        "napi-derive": [
+            "napi"
+        ],
+        "async-recursion": [
+            "async_recursion"
+        ]
+    },
+    "rust-analyzer.server.memory.softLimit": 4096,
+    "rust-analyzer.server.memory.hardLimit": 8192,
+    "rust-analyzer.completion.addCallParentheses": false,
+    "rust-analyzer.completion.addCallArgumentSnippets": false,
+    "rust-analyzer.lru.capacity": 512,
+    "rust-analyzer.completion.limit": 25
+}

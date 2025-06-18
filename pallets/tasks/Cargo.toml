@@ -17,6 +17,8 @@ frame-support = { version = "40.1.0", default-features = false }
 frame-system = { version = "40.1.0", default-features = false }
 sp-std = { version = "14.0.0", default-features = false }
 sp-runtime = { version = "41.1.0", default-features = false }
+sp-core = { version = "36.1.0", default-features = false }
+sp-io = { version = "40.0.1", default-features = false }
 
 [features]
 default = ["std"]
@@ -28,6 +30,8 @@ std = [
     "frame-system/std",
     "sp-std/std",
     "sp-runtime/std",
+    "sp-core/std",
+    "sp-io/std",
 ]
 runtime-benchmarks = [
     "frame-benchmarking/runtime-benchmarks",

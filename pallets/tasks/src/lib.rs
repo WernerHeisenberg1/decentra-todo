@@ -10,84 +10,28 @@
 /// - 任务优先级和难度评估
 pub use pallet::*;
 
-#[frame_support::pallet]
+// 导入子模块
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benchmarking;
+pub mod types;
+
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+
+#[frame_support::pallet(dev_mode)]
 pub mod pallet {
-    use codec::{Decode, Encode};
+    use super::types::{Task, TaskStatus};
+    use codec::MaxEncodedLen;
     use frame_support::{
-        dispatch::{DispatchError, DispatchResult},
+        dispatch::DispatchResult,
         pallet_prelude::*,
         traits::{Get, Randomness},
     };
     use frame_system::pallet_prelude::*;
-    use scale_info::TypeInfo;
-    use sp_runtime::traits::{Saturating, Zero};
+    use sp_runtime::traits::AtLeast32BitUnsigned;
     use sp_std::vec::Vec;
-
-    /// 任务状态枚举
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    pub enum TaskStatus {
-        /// 待处理
-        Pending,
-        /// 进行中
-        InProgress,
-        /// 已完成
-        Completed,
-        /// 已取消
-        Cancelled,
-        /// 需要验证
-        PendingVerification,
-    }
-
-    impl Default for TaskStatus {
-        fn default() -> Self {
-            TaskStatus::Pending
-        }
-    }
-
-    /// 任务优先级
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    pub enum Priority {
-        Low = 1,
-        Medium = 2,
-        High = 3,
-        Urgent = 4,
-    }
-
-    impl Default for Priority {
-        fn default() -> Self {
-            Priority::Medium
-        }
-    }
-
-    /// 任务结构体
-    #[derive(Encode, Decode, Clone, PartialEq, Eq, RuntimeDebug, TypeInfo, MaxEncodedLen)]
-    #[scale_info(skip_type_params(T))]
-    pub struct Task<T: Config> {
-        /// 任务ID
-        pub id: u32,
-        /// 创建者
-        pub creator: T::AccountId,
-        /// 分配给的执行者（可选）
-        pub assignee: Option<T::AccountId>,
-        /// 任务标题
-        pub title: BoundedVec<u8, T::MaxTitleLength>,
-        /// 任务描述
-        pub description: BoundedVec<u8, T::MaxDescriptionLength>,
-        /// 任务状态
-        pub status: TaskStatus,
-        /// 优先级
-        pub priority: Priority,
-        /// 难度等级 (1-10)
-        pub difficulty: u8,
-        /// 预计奖励
-        pub reward: T::Balance,
-        /// 创建时间戳
-        pub created_at: T::Moment,
-        /// 更新时间戳
-        pub updated_at: T::Moment,
-        /// 截止时间（可选）
-        pub deadline: Option<T::Moment>,
-    }
 
     #[pallet::pallet]
     pub struct Pallet<T>(_);
@@ -101,20 +45,32 @@ pub mod pallet {
         /// The balance type
         type Balance: Member + Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
-        /// The moment type for timestamps
+        /// The moment type for timestamps (using BlockNumber for simplicity)
         type Moment: Member + Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
 
         /// 任务标题最大长度
         #[pallet::constant]
-        type MaxTitleLength: Get<u32>;
+        type MaxTitleLength: Get<u32> + Clone + PartialEq;
 
         /// 任务描述最大长度
         #[pallet::constant]
-        type MaxDescriptionLength: Get<u32>;
+        type MaxDescriptionLength: Get<u32> + Clone + PartialEq;
 
         /// 每个用户最大任务数量
         #[pallet::constant]
-        type MaxTasksPerUser: Get<u32>;
+        type MaxTasksPerUser: Get<u32> + Clone + PartialEq;
+
+        /// 每个状态下的最大任务数量
+        #[pallet::constant]
+        type MaxTasksPerStatus: Get<u32> + Clone + PartialEq;
+
+        /// 每个优先级下的最大任务数量
+        #[pallet::constant]
+        type MaxTasksPerPriority: Get<u32> + Clone + PartialEq;
+
+        /// 每个截止日期下的最大任务数量
+        #[pallet::constant]
+        type MaxTasksPerDeadline: Get<u32> + Clone + PartialEq;
 
         /// 随机数生成器
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
@@ -152,10 +108,28 @@ pub mod pallet {
     #[pallet::getter(fn next_task_id)]
     pub type NextTaskId<T> = StorageValue<_, u32, ValueQuery>;
 
-    /// 任务总数统计
+    /// 任务状态索引
     #[pallet::storage]
-    #[pallet::getter(fn task_count_by_status)]
-    pub type TaskCountByStatus<T> = StorageMap<_, Blake2_128Concat, TaskStatus, u32, ValueQuery>;
+    #[pallet::getter(fn tasks_by_status)]
+    pub type TasksByStatus<T: Config> =
+        StorageMap<_, Blake2_128Concat, u8, BoundedVec<u32, T::MaxTasksPerStatus>, ValueQuery>;
+
+    /// 任务优先级索引
+    #[pallet::storage]
+    #[pallet::getter(fn tasks_by_priority)]
+    pub type TasksByPriority<T: Config> =
+        StorageMap<_, Blake2_128Concat, u8, BoundedVec<u32, T::MaxTasksPerPriority>, ValueQuery>;
+
+    /// 任务截止日期索引
+    #[pallet::storage]
+    #[pallet::getter(fn tasks_by_deadline)]
+    pub type TasksByDeadline<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        T::Moment,
+        BoundedVec<u32, T::MaxTasksPerDeadline>,
+        ValueQuery,
+    >;
 
     // Pallets use events to inform users when important changes are made.
     #[pallet::event]
@@ -172,8 +146,8 @@ pub mod pallet {
         /// 任务状态已更改
         TaskStatusChanged {
             task_id: u32,
-            old_status: TaskStatus,
-            new_status: TaskStatus,
+            old_status: u8,
+            new_status: u8,
         },
         /// 任务已分配给执行者
         TaskAssigned {
@@ -217,212 +191,174 @@ pub mod pallet {
         CannotAssignToSelf,
     }
 
-    // Dispatchable functions allow users to interact with the pallet and invoke state changes.
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         /// 创建新任务
-        #[pallet::call_index(0)]
         #[pallet::weight(10_000)]
         pub fn create_task(
             origin: OriginFor<T>,
             title: Vec<u8>,
             description: Vec<u8>,
-            priority: Priority,
+            priority: u8,
             difficulty: u8,
             reward: T::Balance,
             deadline: Option<T::Moment>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let creator = ensure_signed(origin)?;
 
-            // 验证输入参数
-            ensure!(
-                title.len() <= T::MaxTitleLength::get() as usize,
-                Error::<T>::TitleTooLong
-            );
-            ensure!(
-                description.len() <= T::MaxDescriptionLength::get() as usize,
-                Error::<T>::DescriptionTooLong
-            );
+            // 验证难度值
             ensure!(
                 difficulty >= 1 && difficulty <= 10,
                 Error::<T>::InvalidDifficulty
             );
 
-            // 检查用户任务数量限制
-            let user_tasks = UserCreatedTasks::<T>::get(&who);
-            ensure!(
-                user_tasks.len() < T::MaxTasksPerUser::get() as usize,
-                Error::<T>::TooManyTasks
-            );
+            // 验证标题长度
+            let bounded_title: BoundedVec<_, _> =
+                title.try_into().map_err(|_| Error::<T>::TitleTooLong)?;
 
-            // 生成任务ID
+            // 验证描述长度
+            let bounded_description: BoundedVec<_, _> = description
+                .try_into()
+                .map_err(|_| Error::<T>::DescriptionTooLong)?;
+
+            // 获取下一个任务ID
             let task_id = NextTaskId::<T>::get();
-            NextTaskId::<T>::put(task_id.saturating_add(1));
-
-            // 获取当前时间戳（这里简化处理，实际应该从时间戳 pallet 获取）
-            let now = T::Moment::zero(); // 实际应该替换为真实时间戳
+            NextTaskId::<T>::put(task_id + 1);
 
             // 创建任务
-            let task = Task {
-                id: task_id,
-                creator: who.clone(),
-                assignee: None,
-                title: title
-                    .clone()
-                    .try_into()
-                    .map_err(|_| Error::<T>::TitleTooLong)?,
-                description: description
-                    .try_into()
-                    .map_err(|_| Error::<T>::DescriptionTooLong)?,
-                status: TaskStatus::Pending,
+            let now = T::Moment::default(); // 使用默认值，实际项目中可以使用时间戳服务
+            let task = Task::new(
+                task_id,
+                creator.clone(),
+                bounded_title.clone(),
+                bounded_description,
                 priority,
                 difficulty,
                 reward,
-                created_at: now,
-                updated_at: now,
+                now,
                 deadline,
-            };
+            );
 
             // 存储任务
-            Tasks::<T>::insert(&task_id, &task);
+            Tasks::<T>::insert(task_id, &task);
 
             // 更新用户创建的任务列表
-            UserCreatedTasks::<T>::try_mutate(&who, |tasks| {
+            UserCreatedTasks::<T>::mutate(creator.clone(), |tasks| {
                 tasks
                     .try_push(task_id)
                     .map_err(|_| Error::<T>::TooManyTasks)
             })?;
 
-            // 更新状态统计
-            TaskCountByStatus::<T>::mutate(TaskStatus::Pending, |count| {
-                *count = count.saturating_add(1);
-            });
+            // 更新任务索引
+            Self::update_task_indices(&task)?;
 
-            // 触发事件
+            // 发出事件
             Self::deposit_event(Event::TaskCreated {
                 task_id,
-                creator: who,
-                title,
+                creator,
+                title: bounded_title.to_vec(),
             });
 
             Ok(())
         }
 
-        /// 更新任务信息
-        #[pallet::call_index(1)]
+        /// 更新任务
         #[pallet::weight(10_000)]
         pub fn update_task(
             origin: OriginFor<T>,
             task_id: u32,
             title: Option<Vec<u8>>,
             description: Option<Vec<u8>>,
-            priority: Option<Priority>,
+            priority: Option<u8>,
             difficulty: Option<u8>,
             reward: Option<T::Balance>,
             deadline: Option<Option<T::Moment>>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let updater = ensure_signed(origin)?;
 
             // 获取任务
-            let mut task = Tasks::<T>::get(&task_id).ok_or(Error::<T>::TaskNotFound)?;
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
 
-            // 权限检查：只有创建者可以更新任务
-            ensure!(task.creator == who, Error::<T>::NotAuthorized);
+            // 验证权限
+            ensure!(task.can_be_modified_by(&updater), Error::<T>::NotAuthorized);
 
-            // 更新字段
-            if let Some(new_title) = title {
-                ensure!(
-                    new_title.len() <= T::MaxTitleLength::get() as usize,
-                    Error::<T>::TitleTooLong
-                );
-                task.title = new_title.try_into().map_err(|_| Error::<T>::TitleTooLong)?;
+            // 更新任务字段
+            if let Some(title) = title {
+                let bounded_title: BoundedVec<_, _> =
+                    title.try_into().map_err(|_| Error::<T>::TitleTooLong)?;
+                task.title = bounded_title;
             }
 
-            if let Some(new_description) = description {
-                ensure!(
-                    new_description.len() <= T::MaxDescriptionLength::get() as usize,
-                    Error::<T>::DescriptionTooLong
-                );
-                task.description = new_description
+            if let Some(description) = description {
+                let bounded_description: BoundedVec<_, _> = description
                     .try_into()
                     .map_err(|_| Error::<T>::DescriptionTooLong)?;
+                task.description = bounded_description;
             }
 
-            if let Some(new_priority) = priority {
-                task.priority = new_priority;
+            if let Some(priority) = priority {
+                task.priority = priority;
             }
 
-            if let Some(new_difficulty) = difficulty {
+            if let Some(difficulty) = difficulty {
                 ensure!(
-                    new_difficulty >= 1 && new_difficulty <= 10,
+                    difficulty >= 1 && difficulty <= 10,
                     Error::<T>::InvalidDifficulty
                 );
-                task.difficulty = new_difficulty;
+                task.difficulty = difficulty;
             }
 
-            if let Some(new_reward) = reward {
-                task.reward = new_reward;
+            if let Some(reward) = reward {
+                task.reward = reward;
             }
 
-            if let Some(new_deadline) = deadline {
-                task.deadline = new_deadline;
+            if let Some(deadline) = deadline {
+                task.deadline = deadline;
             }
 
-            // 更新时间戳
-            task.updated_at = T::Moment::zero(); // 实际应该替换为真实时间戳
+            // 更新任务
+            task.updated_at = T::Moment::default();
+            Tasks::<T>::insert(task_id, &task);
 
-            // 保存任务
-            Tasks::<T>::insert(&task_id, &task);
+            // 更新任务索引
+            Self::update_task_indices(&task)?;
 
-            // 触发事件
-            Self::deposit_event(Event::TaskUpdated {
-                task_id,
-                updater: who,
-            });
+            // 发出事件
+            Self::deposit_event(Event::TaskUpdated { task_id, updater });
 
             Ok(())
         }
 
         /// 更改任务状态
-        #[pallet::call_index(2)]
         #[pallet::weight(10_000)]
         pub fn change_task_status(
             origin: OriginFor<T>,
             task_id: u32,
-            new_status: TaskStatus,
+            new_status: u8,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // 获取任务
-            let mut task = Tasks::<T>::get(&task_id).ok_or(Error::<T>::TaskNotFound)?;
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
 
-            // 权限检查：创建者或分配者可以更改状态
-            ensure!(
-                task.creator == who || task.assignee == Some(who.clone()),
-                Error::<T>::NotAuthorized
-            );
+            // 验证权限
+            ensure!(task.can_be_operated_by(&who), Error::<T>::NotAuthorized);
 
-            let old_status = task.status.clone();
+            // 验证状态转换
+            Self::validate_status_transition(&task.status, &new_status)?;
 
-            // 验证状态转换的合法性
-            Self::validate_status_transition(&old_status, &new_status)?;
+            // 更新状态
+            let old_status = task.status;
+            task.status = new_status;
+            task.updated_at = T::Moment::default();
 
-            // 更新统计
-            TaskCountByStatus::<T>::mutate(&old_status, |count| {
-                *count = count.saturating_sub(1);
-            });
-            TaskCountByStatus::<T>::mutate(&new_status, |count| {
-                *count = count.saturating_add(1);
-            });
+            // 存储更新后的任务
+            Tasks::<T>::insert(task_id, &task);
 
-            // 更新任务状态和时间戳
-            task.status = new_status.clone();
-            task.updated_at = T::Moment::zero(); // 实际应该替换为真实时间戳
+            // 更新任务索引
+            Self::update_task_indices(&task)?;
 
-            // 保存任务
-            Tasks::<T>::insert(&task_id, &task);
-
-            // 触发事件
+            // 发出事件
             Self::deposit_event(Event::TaskStatusChanged {
                 task_id,
                 old_status,
@@ -432,8 +368,7 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 分配任务给执行者
-        #[pallet::call_index(3)]
+        /// 分配任务
         #[pallet::weight(10_000)]
         pub fn assign_task(
             origin: OriginFor<T>,
@@ -443,71 +378,70 @@ pub mod pallet {
             let who = ensure_signed(origin)?;
 
             // 获取任务
-            let mut task = Tasks::<T>::get(&task_id).ok_or(Error::<T>::TaskNotFound)?;
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
 
-            // 权限检查：只有创建者可以分配任务
-            ensure!(task.creator == who, Error::<T>::NotAuthorized);
+            // 验证权限
+            ensure!(task.can_be_modified_by(&who), Error::<T>::NotAuthorized);
 
-            // 不能分配给自己
-            ensure!(task.creator != assignee, Error::<T>::CannotAssignToSelf);
-
-            // 检查任务是否已经分配
-            ensure!(task.assignee.is_none(), Error::<T>::TaskAlreadyAssigned);
-
-            // 检查分配者的任务数量限制
-            let assignee_tasks = UserAssignedTasks::<T>::get(&assignee);
+            // 验证任务状态
             ensure!(
-                assignee_tasks.len() < T::MaxTasksPerUser::get() as usize,
-                Error::<T>::TooManyTasks
+                task.status == 0, // Pending
+                Error::<T>::InvalidStatusTransition
             );
+
+            // 验证任务未分配
+            ensure!(!task.is_assigned(), Error::<T>::TaskAlreadyAssigned);
+
+            // 验证不能分配给自己
+            ensure!(task.creator != assignee, Error::<T>::CannotAssignToSelf);
 
             // 分配任务
             task.assignee = Some(assignee.clone());
-            task.updated_at = T::Moment::zero(); // 实际应该替换为真实时间戳
+            task.updated_at = T::Moment::default();
 
-            // 保存任务
-            Tasks::<T>::insert(&task_id, &task);
+            // 存储更新后的任务
+            Tasks::<T>::insert(task_id, &task);
 
             // 更新分配者的任务列表
-            UserAssignedTasks::<T>::try_mutate(&assignee, |tasks| {
+            UserAssignedTasks::<T>::mutate(&assignee, |tasks| {
                 tasks
                     .try_push(task_id)
                     .map_err(|_| Error::<T>::TooManyTasks)
             })?;
 
-            // 触发事件
+            // 发出事件
             Self::deposit_event(Event::TaskAssigned { task_id, assignee });
 
             Ok(())
         }
 
-        /// 取消任务分配
-        #[pallet::call_index(4)]
+        /// 取消分配任务
         #[pallet::weight(10_000)]
         pub fn unassign_task(origin: OriginFor<T>, task_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // 获取任务
-            let mut task = Tasks::<T>::get(&task_id).ok_or(Error::<T>::TaskNotFound)?;
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
 
-            // 权限检查：只有创建者可以取消分配
-            ensure!(task.creator == who, Error::<T>::NotAuthorized);
+            // 验证权限
+            ensure!(task.can_be_modified_by(&who), Error::<T>::NotAuthorized);
 
-            // 检查任务是否已分配
+            // 验证任务已分配
             let previous_assignee = task.assignee.take().ok_or(Error::<T>::TaskNotAssigned)?;
 
-            // 更新时间戳
-            task.updated_at = T::Moment::zero(); // 实际应该替换为真实时间戳
+            // 更新任务状态为Pending
+            task.status = 0; // Pending
+            task.updated_at = T::Moment::default();
 
-            // 保存任务
-            Tasks::<T>::insert(&task_id, &task);
+            // 存储更新后的任务
+            Tasks::<T>::insert(task_id, &task);
 
             // 从分配者的任务列表中移除
             UserAssignedTasks::<T>::mutate(&previous_assignee, |tasks| {
-                tasks.retain(|&id| id != task_id);
+                tasks.retain(|&x| x != task_id);
             });
 
-            // 触发事件
+            // 发出事件
             Self::deposit_event(Event::TaskUnassigned {
                 task_id,
                 previous_assignee,
@@ -517,38 +451,35 @@ pub mod pallet {
         }
 
         /// 删除任务
-        #[pallet::call_index(5)]
         #[pallet::weight(10_000)]
         pub fn delete_task(origin: OriginFor<T>, task_id: u32) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
             // 获取任务
-            let task = Tasks::<T>::get(&task_id).ok_or(Error::<T>::TaskNotFound)?;
+            let task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
 
-            // 权限检查：只有创建者可以删除任务
-            ensure!(task.creator == who, Error::<T>::NotAuthorized);
+            // 验证权限
+            ensure!(task.can_be_modified_by(&who), Error::<T>::NotAuthorized);
 
-            // 从存储中删除任务
-            Tasks::<T>::remove(&task_id);
+            // 从存储中移除任务
+            Tasks::<T>::remove(task_id);
 
-            // 更新统计
-            TaskCountByStatus::<T>::mutate(&task.status, |count| {
-                *count = count.saturating_sub(1);
-            });
+            // 清理任务索引
+            Self::remove_task_indices(&task)?;
 
             // 从创建者的任务列表中移除
             UserCreatedTasks::<T>::mutate(&task.creator, |tasks| {
-                tasks.retain(|&id| id != task_id);
+                tasks.retain(|&x| x != task_id);
             });
 
-            // 如果有分配者，也从分配者的任务列表中移除
+            // 如果任务有分配者，从分配者的任务列表中移除
             if let Some(assignee) = &task.assignee {
                 UserAssignedTasks::<T>::mutate(assignee, |tasks| {
-                    tasks.retain(|&id| id != task_id);
+                    tasks.retain(|&x| x != task_id);
                 });
             }
 
-            // 触发事件
+            // 发出事件
             Self::deposit_event(Event::TaskDeleted {
                 task_id,
                 deleted_by: who,
@@ -558,48 +489,119 @@ pub mod pallet {
         }
     }
 
-    // Helper functions
+    // Helper methods
     impl<T: Config> Pallet<T> {
-        /// 验证任务状态转换的合法性
-        fn validate_status_transition(
-            old_status: &TaskStatus,
-            new_status: &TaskStatus,
-        ) -> Result<(), Error<T>> {
-            use TaskStatus::*;
-
-            let valid = match (old_status, new_status) {
-                // 从 Pending 可以转换到任何状态
-                (Pending, _) => true,
-                // 从 InProgress 可以转换到 Completed, Cancelled, PendingVerification
-                (InProgress, Completed) => true,
-                (InProgress, Cancelled) => true,
-                (InProgress, PendingVerification) => true,
-                // 从 PendingVerification 可以转换到 Completed 或 InProgress
-                (PendingVerification, Completed) => true,
-                (PendingVerification, InProgress) => true,
-                // Completed 和 Cancelled 是终态，不能再转换
-                (Completed, _) => false,
-                (Cancelled, _) => false,
-                // 其他转换都不允许
-                _ => false,
-            };
-
-            if valid {
-                Ok(())
-            } else {
-                Err(Error::<T>::InvalidStatusTransition)
-            }
+        /// 根据状态获取任务
+        pub fn get_tasks_by_status(status: u8) -> Vec<Task<T>> {
+            TasksByStatus::<T>::get(status)
+                .iter()
+                .filter_map(|&task_id| Tasks::<T>::get(task_id))
+                .collect()
         }
 
-        /// 获取任务统计信息
-        pub fn get_task_statistics() -> (u32, u32, u32, u32, u32) {
-            (
-                TaskCountByStatus::<T>::get(TaskStatus::Pending),
-                TaskCountByStatus::<T>::get(TaskStatus::InProgress),
-                TaskCountByStatus::<T>::get(TaskStatus::Completed),
-                TaskCountByStatus::<T>::get(TaskStatus::Cancelled),
-                TaskCountByStatus::<T>::get(TaskStatus::PendingVerification),
-            )
+        /// 根据优先级获取任务
+        pub fn get_tasks_by_priority(priority: u8) -> Vec<Task<T>> {
+            TasksByPriority::<T>::get(priority)
+                .iter()
+                .filter_map(|&task_id| Tasks::<T>::get(task_id))
+                .collect()
+        }
+
+        /// 根据截止日期获取任务
+        pub fn get_tasks_by_deadline(deadline: T::Moment) -> Vec<Task<T>> {
+            TasksByDeadline::<T>::get(deadline)
+                .iter()
+                .filter_map(|&task_id| Tasks::<T>::get(task_id))
+                .collect()
+        }
+
+        /// 更新任务索引
+        fn update_task_indices(task: &Task<T>) -> DispatchResult {
+            // 更新状态索引
+            TasksByStatus::<T>::mutate(task.status, |tasks| {
+                if !tasks.contains(&task.id) {
+                    tasks
+                        .try_push(task.id)
+                        .map_err(|_| Error::<T>::TooManyTasks)
+                } else {
+                    Ok(())
+                }
+            })?;
+
+            // 更新优先级索引
+            TasksByPriority::<T>::mutate(task.priority, |tasks| {
+                if !tasks.contains(&task.id) {
+                    tasks
+                        .try_push(task.id)
+                        .map_err(|_| Error::<T>::TooManyTasks)
+                } else {
+                    Ok(())
+                }
+            })?;
+
+            // 更新截止日期索引
+            if let Some(deadline) = task.deadline {
+                TasksByDeadline::<T>::mutate(deadline, |tasks| {
+                    if !tasks.contains(&task.id) {
+                        tasks
+                            .try_push(task.id)
+                            .map_err(|_| Error::<T>::TooManyTasks)
+                    } else {
+                        Ok(())
+                    }
+                })?;
+            }
+
+            Ok(())
+        }
+
+        /// 移除任务索引
+        fn remove_task_indices(task: &Task<T>) -> DispatchResult {
+            // 从状态索引中移除
+            TasksByStatus::<T>::mutate(task.status, |tasks| {
+                tasks.retain(|&x| x != task.id);
+            });
+
+            // 从优先级索引中移除
+            TasksByPriority::<T>::mutate(task.priority, |tasks| {
+                tasks.retain(|&x| x != task.id);
+            });
+
+            // 从截止日期索引中移除
+            if let Some(deadline) = task.deadline {
+                TasksByDeadline::<T>::mutate(deadline, |tasks| {
+                    tasks.retain(|&x| x != task.id);
+                });
+            }
+
+            Ok(())
+        }
+
+        /// 验证状态转换
+        fn validate_status_transition(old_status: &u8, new_status: &u8) -> Result<(), Error<T>> {
+            use TaskStatus::*;
+
+            let old = TaskStatus::from(*old_status);
+            let new = TaskStatus::from(*new_status);
+
+            match (old, new) {
+                // 从 Pending 可以转换到 InProgress, Cancelled
+                (Pending, InProgress) | (Pending, Cancelled) => Ok(()),
+
+                // 从 InProgress 可以转换到 Completed, Cancelled, PendingVerification
+                (InProgress, Completed)
+                | (InProgress, Cancelled)
+                | (InProgress, PendingVerification) => Ok(()),
+
+                // 从 PendingVerification 可以转换到 Completed, InProgress
+                (PendingVerification, Completed) | (PendingVerification, InProgress) => Ok(()),
+
+                // 同状态转换允许
+                _ if old_status == new_status => Ok(()),
+
+                // 其他转换都是无效的
+                _ => Err(Error::<T>::InvalidStatusTransition),
+            }
         }
     }
 }
