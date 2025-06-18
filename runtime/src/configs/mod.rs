@@ -165,6 +165,7 @@ impl pallet_tasks::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type Balance = Balance;
     type Moment = u64;
+    type Currency = Balances;
     type MaxTitleLength = ConstU32<256>;
     type MaxDescriptionLength = ConstU32<2048>;
     type MaxTasksPerUser = ConstU32<1000>;

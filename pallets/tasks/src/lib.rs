@@ -27,7 +27,7 @@ pub mod pallet {
     use frame_support::{
         dispatch::DispatchResult,
         pallet_prelude::*,
-        traits::{Get, Randomness},
+        traits::{Currency, Get, Randomness, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
@@ -47,6 +47,10 @@ pub mod pallet {
 
         /// The moment type for timestamps (using BlockNumber for simplicity)
         type Moment: Member + Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+
+        /// Currency type for handling token transfers
+        type Currency: Currency<Self::AccountId, Balance = Self::Balance>
+            + ReservableCurrency<Self::AccountId>;
 
         /// 任务标题最大长度
         #[pallet::constant]
@@ -165,6 +169,25 @@ pub mod pallet {
             task_id: u32,
             deleted_by: T::AccountId,
         },
+        /// 任务完成奖励已发放
+        TaskRewardPaid {
+            task_id: u32,
+            assignee: T::AccountId,
+            creator: T::AccountId,
+            reward: T::Balance,
+        },
+        /// 任务奖励预留（创建任务时锁定奖励）
+        TaskRewardReserved {
+            task_id: u32,
+            creator: T::AccountId,
+            reward: T::Balance,
+        },
+        /// 任务奖励释放（任务取消时释放锁定的奖励）
+        TaskRewardReleased {
+            task_id: u32,
+            creator: T::AccountId,
+            reward: T::Balance,
+        },
     }
 
     // Errors inform users that something went wrong.
@@ -194,6 +217,12 @@ pub mod pallet {
         CannotAssignToSelf,
         /// 任务已过期
         TaskExpired,
+        /// 余额不足，无法创建任务或支付奖励
+        InsufficientBalance,
+        /// 奖励金额无效（必须大于0）
+        InvalidReward,
+        /// 奖励转移失败
+        RewardTransferFailed,
     }
 
     #[pallet::call]
@@ -210,6 +239,15 @@ pub mod pallet {
             deadline: Option<T::Moment>,
         ) -> DispatchResult {
             let creator = ensure_signed(origin)?;
+
+            // 验证奖励金额
+            ensure!(!reward.is_zero(), Error::<T>::InvalidReward);
+
+            // 验证创建者有足够余额支付奖励
+            ensure!(
+                T::Currency::can_reserve(&creator, reward),
+                Error::<T>::InsufficientBalance
+            );
 
             // 验证优先级值（1-4: Low=1, Medium=2, High=3, Urgent=4）
             ensure!(priority >= 1 && priority <= 4, Error::<T>::InvalidPriority);
@@ -231,6 +269,9 @@ pub mod pallet {
             let bounded_description: BoundedVec<_, _> = description
                 .try_into()
                 .map_err(|_| Error::<T>::DescriptionTooLong)?;
+
+            // 预留奖励金额（锁定创建者的代币）
+            T::Currency::reserve(&creator, reward).map_err(|_| Error::<T>::InsufficientBalance)?;
 
             // 获取下一个任务ID
             let task_id = NextTaskId::<T>::get();
@@ -266,8 +307,15 @@ pub mod pallet {
             // 发出事件
             Self::deposit_event(Event::TaskCreated {
                 task_id,
-                creator,
+                creator: creator.clone(),
                 title: bounded_title.to_vec(),
+            });
+
+            // 发出奖励预留事件
+            Self::deposit_event(Event::TaskRewardReserved {
+                task_id,
+                creator,
+                reward,
             });
 
             Ok(())
@@ -322,8 +370,34 @@ pub mod pallet {
                 task.difficulty = difficulty;
             }
 
-            if let Some(reward) = reward {
-                task.reward = reward;
+            if let Some(new_reward) = reward {
+                // 验证新的奖励金额
+                ensure!(!new_reward.is_zero(), Error::<T>::InvalidReward);
+
+                // 只有在任务未完成且未取消的情况下才能修改奖励
+                ensure!(
+                    task.status != 2 && task.status != 3, // 不是 Completed 或 Cancelled
+                    Error::<T>::InvalidStatusTransition
+                );
+
+                // 计算奖励差额
+                let old_reward = task.reward;
+                if new_reward > old_reward {
+                    // 增加奖励：需要额外预留资金
+                    let additional = new_reward - old_reward;
+                    ensure!(
+                        T::Currency::can_reserve(&task.creator, additional),
+                        Error::<T>::InsufficientBalance
+                    );
+                    T::Currency::reserve(&task.creator, additional)
+                        .map_err(|_| Error::<T>::InsufficientBalance)?;
+                } else if new_reward < old_reward {
+                    // 减少奖励：释放多余的预留资金
+                    let excess = old_reward - new_reward;
+                    T::Currency::unreserve(&task.creator, excess);
+                }
+
+                task.reward = new_reward;
             }
 
             if let Some(deadline) = deadline {
@@ -360,6 +434,9 @@ pub mod pallet {
 
             // 验证状态转换
             Self::validate_status_transition(&task.status, &new_status)?;
+
+            // 处理奖励发放和释放
+            Self::handle_reward_on_status_change(&task, task.status, new_status)?;
 
             // 更新状态
             let old_status = task.status;
@@ -491,6 +568,19 @@ pub mod pallet {
 
             // 验证权限
             ensure!(task.can_be_modified_by(&who), Error::<T>::NotAuthorized);
+
+            // 如果任务还没有完成或取消，释放预留的奖励
+            if task.status != 2 && task.status != 3 {
+                // 不是 Completed 或 Cancelled
+                T::Currency::unreserve(&task.creator, task.reward);
+
+                // 发出奖励释放事件
+                Self::deposit_event(Event::TaskRewardReleased {
+                    task_id,
+                    creator: task.creator.clone(),
+                    reward: task.reward,
+                });
+            }
 
             // 从存储中移除任务
             Tasks::<T>::remove(task_id);
@@ -714,6 +804,54 @@ pub mod pallet {
                 let now = Self::current_timestamp();
                 ensure!(deadline > now, Error::<T>::TaskExpired);
             }
+            Ok(())
+        }
+
+        /// 处理任务状态变更时的奖励发放和释放
+        fn handle_reward_on_status_change(
+            task: &Task<T>,
+            _old_status: u8,
+            new_status: u8,
+        ) -> DispatchResult {
+            // 任务完成时发放奖励
+            if new_status == 2 {
+                // Completed
+                if let Some(assignee) = &task.assignee {
+                    // 释放创建者的预留资金
+                    T::Currency::unreserve(&task.creator, task.reward);
+
+                    // 转账给执行者
+                    T::Currency::transfer(
+                        &task.creator,
+                        assignee,
+                        task.reward,
+                        frame_support::traits::ExistenceRequirement::KeepAlive,
+                    )
+                    .map_err(|_| Error::<T>::RewardTransferFailed)?;
+
+                    // 发出奖励发放事件
+                    Self::deposit_event(Event::TaskRewardPaid {
+                        task_id: task.id,
+                        assignee: assignee.clone(),
+                        creator: task.creator.clone(),
+                        reward: task.reward,
+                    });
+                }
+            }
+            // 任务取消时释放预留的奖励
+            else if new_status == 3 {
+                // Cancelled
+                // 释放创建者的预留资金
+                T::Currency::unreserve(&task.creator, task.reward);
+
+                // 发出奖励释放事件
+                Self::deposit_event(Event::TaskRewardReleased {
+                    task_id: task.id,
+                    creator: task.creator.clone(),
+                    reward: task.reward,
+                });
+            }
+
             Ok(())
         }
     }
