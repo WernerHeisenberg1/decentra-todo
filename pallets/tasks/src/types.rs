@@ -188,4 +188,58 @@ impl<T: crate::pallet::Config> Task<T> {
     pub fn is_final_state(&self) -> bool {
         self.status == 2 || self.status == 3 // Completed or Cancelled
     }
+
+    /// 检查任务是否过期
+    pub fn is_expired(&self, current_time: T::Moment) -> bool {
+        if let Some(deadline) = self.deadline {
+            deadline <= current_time
+        } else {
+            false
+        }
+    }
+
+    /// 检查任务是否即将过期（在指定时间内）
+    pub fn is_expiring_soon(&self, current_time: T::Moment, threshold: T::Moment) -> bool {
+        if let Some(deadline) = self.deadline {
+            deadline > current_time && deadline <= current_time + threshold
+        } else {
+            false
+        }
+    }
+
+    /// 获取任务状态的字符串表示
+    pub fn status_string(&self) -> &'static str {
+        match TaskStatus::from(self.status) {
+            TaskStatus::Pending => "Pending",
+            TaskStatus::InProgress => "InProgress",
+            TaskStatus::Completed => "Completed",
+            TaskStatus::Cancelled => "Cancelled",
+            TaskStatus::PendingVerification => "PendingVerification",
+        }
+    }
+
+    /// 获取优先级的字符串表示
+    pub fn priority_string(&self) -> &'static str {
+        match Priority::from(self.priority) {
+            Priority::Low => "Low",
+            Priority::Medium => "Medium",
+            Priority::High => "High",
+            Priority::Urgent => "Urgent",
+        }
+    }
+
+    /// 检查任务是否可以开始执行
+    pub fn can_start(&self) -> bool {
+        self.status == 0 && self.assignee.is_some() // Pending and assigned
+    }
+
+    /// 检查任务是否可以完成
+    pub fn can_complete(&self) -> bool {
+        self.status == 1 // InProgress
+    }
+
+    /// 检查任务是否需要验证
+    pub fn needs_verification(&self) -> bool {
+        self.status == 4 // PendingVerification
+    }
 }

@@ -29,7 +29,7 @@ pub mod pallet {
         traits::{Get, Randomness},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{AtLeast32BitUnsigned, Zero};
+    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion, Zero};
     use sp_std::vec::Vec;
 
     #[pallet::pallet]
@@ -328,10 +328,12 @@ pub mod pallet {
     // 辅助函数
     impl<T: Config> Pallet<T> {
         /// 获取当前时间戳
+        ///
+        /// 注意：在实际项目中，应该集成 pallet_timestamp 来获取准确的区块时间戳
+        /// 目前使用区块号作为时间戳的替代方案
         pub fn current_timestamp() -> T::Moment {
-            // 简化版本：返回默认时间戳
-            // 在实际应用中，应该通过proper方式获取时间戳
-            T::Moment::default()
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            T::Moment::from(block_number.saturated_into::<u32>())
         }
 
         /// 基于评分和任务难度更新用户声誉
@@ -352,14 +354,7 @@ pub mod pallet {
             let difficulty_bonus = (difficulty as u32).saturating_mul(T::DifficultyBonus::get());
 
             // 计算评分奖励（评分越高奖励越多）
-            let rating_multiplier = match rating {
-                TaskRating::Poor => 50,       // 50% 的基础分数
-                TaskRating::Fair => 75,       // 75% 的基础分数
-                TaskRating::Good => 100,      // 100% 的基础分数
-                TaskRating::Excellent => 125, // 125% 的基础分数
-                TaskRating::Perfect => 150,   // 150% 的基础分数
-            };
-
+            let rating_multiplier = rating.reward_multiplier();
             let rating_bonus = base_score.saturating_mul(rating_multiplier) / 100;
             let total_reward = rating_bonus.saturating_add(difficulty_bonus);
 

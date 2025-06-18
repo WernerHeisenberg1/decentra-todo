@@ -30,7 +30,7 @@ pub mod pallet {
         traits::{Get, Randomness},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::AtLeast32BitUnsigned;
+    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
     use sp_std::vec::Vec;
 
     #[pallet::pallet]
@@ -180,6 +180,8 @@ pub mod pallet {
         DescriptionTooLong,
         /// 任务数量达到上限
         TooManyTasks,
+        /// 优先级值无效（必须在1-4之间）
+        InvalidPriority,
         /// 难度值无效（必须在1-10之间）
         InvalidDifficulty,
         /// 任务状态转换无效
@@ -190,6 +192,8 @@ pub mod pallet {
         TaskNotAssigned,
         /// 不能分配给自己创建的任务
         CannotAssignToSelf,
+        /// 任务已过期
+        TaskExpired,
     }
 
     #[pallet::call]
@@ -207,11 +211,17 @@ pub mod pallet {
         ) -> DispatchResult {
             let creator = ensure_signed(origin)?;
 
-            // 验证难度值
+            // 验证优先级值（1-4: Low=1, Medium=2, High=3, Urgent=4）
+            ensure!(priority >= 1 && priority <= 4, Error::<T>::InvalidPriority);
+
+            // 验证难度值（1-10）
             ensure!(
                 difficulty >= 1 && difficulty <= 10,
                 Error::<T>::InvalidDifficulty
             );
+
+            // 验证截止日期
+            Self::validate_deadline(deadline)?;
 
             // 验证标题长度
             let bounded_title: BoundedVec<_, _> =
@@ -227,7 +237,7 @@ pub mod pallet {
             NextTaskId::<T>::put(task_id + 1);
 
             // 创建任务
-            let now = T::Moment::default(); // 使用默认值，实际项目中可以使用时间戳服务
+            let now = Self::current_timestamp();
             let task = Task::new(
                 task_id,
                 creator.clone(),
@@ -298,10 +308,13 @@ pub mod pallet {
             }
 
             if let Some(priority) = priority {
+                // 验证优先级值
+                ensure!(priority >= 1 && priority <= 4, Error::<T>::InvalidPriority);
                 task.priority = priority;
             }
 
             if let Some(difficulty) = difficulty {
+                // 验证难度值
                 ensure!(
                     difficulty >= 1 && difficulty <= 10,
                     Error::<T>::InvalidDifficulty
@@ -318,7 +331,7 @@ pub mod pallet {
             }
 
             // 更新任务
-            task.updated_at = T::Moment::default();
+            task.updated_at = Self::current_timestamp();
             Tasks::<T>::insert(task_id, &task);
 
             // 更新任务索引
@@ -351,13 +364,26 @@ pub mod pallet {
             // 更新状态
             let old_status = task.status;
             task.status = new_status;
-            task.updated_at = T::Moment::default();
+            task.updated_at = Self::current_timestamp();
 
             // 存储更新后的任务
             Tasks::<T>::insert(task_id, &task);
 
             // 更新任务索引
             Self::update_task_indices(&task)?;
+
+            // TODO: 集成声誉系统 - 当任务状态变更时通知声誉模块
+            // 例如：当任务完成或取消时，应该更新执行者的声誉
+            // if let Some(assignee) = &task.assignee {
+            //     // 调用声誉模块的状态变更处理函数
+            //     pallet_reputation::Pallet::<T>::on_task_status_changed(
+            //         task_id,
+            //         Some(assignee),
+            //         old_status,
+            //         new_status,
+            //         task.difficulty,
+            //     )?;
+            // }
 
             // 发出事件
             Self::deposit_event(Event::TaskStatusChanged {
@@ -385,6 +411,9 @@ pub mod pallet {
             // 验证权限
             ensure!(task.can_be_modified_by(&who), Error::<T>::NotAuthorized);
 
+            // 检查任务是否过期
+            Self::check_task_expired(&task)?;
+
             // 验证任务状态
             ensure!(
                 task.status == 0, // Pending
@@ -399,7 +428,7 @@ pub mod pallet {
 
             // 分配任务
             task.assignee = Some(assignee.clone());
-            task.updated_at = T::Moment::default();
+            task.updated_at = Self::current_timestamp();
 
             // 存储更新后的任务
             Tasks::<T>::insert(task_id, &task);
@@ -433,7 +462,7 @@ pub mod pallet {
 
             // 更新任务状态为Pending
             task.status = 0; // Pending
-            task.updated_at = T::Moment::default();
+            task.updated_at = Self::current_timestamp();
 
             // 存储更新后的任务
             Tasks::<T>::insert(task_id, &task);
@@ -493,6 +522,15 @@ pub mod pallet {
 
     // Helper methods
     impl<T: Config> Pallet<T> {
+        /// 获取当前时间戳
+        ///
+        /// 注意：在实际项目中，应该集成 pallet_timestamp 来获取准确的区块时间戳
+        /// 目前使用区块号作为时间戳的替代方案
+        pub fn current_timestamp() -> T::Moment {
+            let block_number = <frame_system::Pallet<T>>::block_number();
+            T::Moment::from(block_number.saturated_into::<u32>())
+        }
+
         /// 根据状态获取任务
         pub fn get_tasks_by_status(status: u8) -> Vec<Task<T>> {
             TasksByStatus::<T>::get(status)
@@ -515,6 +553,57 @@ pub mod pallet {
                 .iter()
                 .filter_map(|&task_id| Tasks::<T>::get(task_id))
                 .collect()
+        }
+
+        /// 获取用户创建的任务
+        pub fn get_user_created_tasks(user: &T::AccountId) -> Vec<Task<T>> {
+            UserCreatedTasks::<T>::get(user)
+                .iter()
+                .filter_map(|&task_id| Tasks::<T>::get(task_id))
+                .collect()
+        }
+
+        /// 获取用户被分配的任务
+        pub fn get_user_assigned_tasks(user: &T::AccountId) -> Vec<Task<T>> {
+            UserAssignedTasks::<T>::get(user)
+                .iter()
+                .filter_map(|&task_id| Tasks::<T>::get(task_id))
+                .collect()
+        }
+
+        /// 获取所有待处理的任务
+        pub fn get_pending_tasks() -> Vec<Task<T>> {
+            Self::get_tasks_by_status(0) // Pending
+        }
+
+        /// 获取所有进行中的任务
+        pub fn get_in_progress_tasks() -> Vec<Task<T>> {
+            Self::get_tasks_by_status(1) // InProgress
+        }
+
+        /// 获取所有已完成的任务
+        pub fn get_completed_tasks() -> Vec<Task<T>> {
+            Self::get_tasks_by_status(2) // Completed
+        }
+
+        /// 获取即将到期的任务（未来指定时间内）
+        pub fn get_expiring_tasks(within_blocks: T::Moment) -> Vec<Task<T>> {
+            let now = Self::current_timestamp();
+            let threshold = now + within_blocks;
+
+            // 这里需要遍历所有任务，实际应用中可能需要更高效的索引
+            let mut expiring_tasks = Vec::new();
+
+            // 注意：这是一个简化的实现，实际应用中应该使用更高效的查询方式
+            for task in Tasks::<T>::iter_values() {
+                if let Some(deadline) = task.deadline {
+                    if deadline <= threshold && deadline > now {
+                        expiring_tasks.push(task);
+                    }
+                }
+            }
+
+            expiring_tasks
         }
 
         /// 更新任务索引
@@ -604,6 +693,28 @@ pub mod pallet {
                 // 其他转换都是无效的
                 _ => Err(Error::<T>::InvalidStatusTransition),
             }
+        }
+
+        /// 验证截止日期
+        ///
+        /// 确保截止日期在未来，防止创建已过期的任务
+        fn validate_deadline(deadline: Option<T::Moment>) -> DispatchResult {
+            if let Some(deadline) = deadline {
+                let now = Self::current_timestamp();
+                ensure!(deadline > now, Error::<T>::TaskExpired);
+            }
+            Ok(())
+        }
+
+        /// 检查任务是否已过期
+        ///
+        /// 用于在操作任务前检查是否过期
+        fn check_task_expired(task: &Task<T>) -> Result<(), Error<T>> {
+            if let Some(deadline) = task.deadline {
+                let now = Self::current_timestamp();
+                ensure!(deadline > now, Error::<T>::TaskExpired);
+            }
+            Ok(())
         }
     }
 }
