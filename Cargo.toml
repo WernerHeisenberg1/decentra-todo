@@ -10,6 +10,7 @@ members = [
     "node",
     "pallets/template",
     "pallets/tasks",
+    "pallets/reputation",
     "runtime",
 ]
 resolver = "2"
@@ -18,6 +19,7 @@ resolver = "2"
 solochain-template-runtime = { path = "./runtime", default-features = false }
 pallet-template = { path = "./pallets/template", default-features = false }
 pallet-tasks = { path = "./pallets/tasks", default-features = false }
+pallet-reputation = { path = "./pallets/reputation", default-features = false }
 clap = { version = "4.5.13" }
 frame-benchmarking-cli = { version = "47.0.0", default-features = false }
 frame-metadata-hash-extension = { version = "0.8.0", default-features = false }
@@ -62,6 +64,7 @@ frame-try-runtime = { version = "0.46.0", default-features = false }
 pallet-aura = { version = "39.0.0", default-features = false }
 pallet-balances = { version = "41.1.0", default-features = false }
 pallet-grandpa = { version = "40.0.0", default-features = false }
+pallet-insecure-randomness-collective-flip = { version = "28.0.0", default-features = false }
 pallet-sudo = { version = "40.0.0", default-features = false }
 pallet-timestamp = { version = "39.0.0", default-features = false }
 pallet-transaction-payment-rpc-runtime-api = { version = "40.0.0", default-features = false }

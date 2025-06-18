@@ -50,27 +50,27 @@ pub mod pallet {
 
         /// 任务标题最大长度
         #[pallet::constant]
-        type MaxTitleLength: Get<u32> + Clone + PartialEq;
+        type MaxTitleLength: Get<u32>;
 
         /// 任务描述最大长度
         #[pallet::constant]
-        type MaxDescriptionLength: Get<u32> + Clone + PartialEq;
+        type MaxDescriptionLength: Get<u32>;
 
         /// 每个用户最大任务数量
         #[pallet::constant]
-        type MaxTasksPerUser: Get<u32> + Clone + PartialEq;
+        type MaxTasksPerUser: Get<u32>;
 
         /// 每个状态下的最大任务数量
         #[pallet::constant]
-        type MaxTasksPerStatus: Get<u32> + Clone + PartialEq;
+        type MaxTasksPerStatus: Get<u32>;
 
         /// 每个优先级下的最大任务数量
         #[pallet::constant]
-        type MaxTasksPerPriority: Get<u32> + Clone + PartialEq;
+        type MaxTasksPerPriority: Get<u32>;
 
         /// 每个截止日期下的最大任务数量
         #[pallet::constant]
-        type MaxTasksPerDeadline: Get<u32> + Clone + PartialEq;
+        type MaxTasksPerDeadline: Get<u32>;
 
         /// 随机数生成器
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
@@ -148,6 +148,7 @@ pub mod pallet {
             task_id: u32,
             old_status: u8,
             new_status: u8,
+            assignee: Option<T::AccountId>,
         },
         /// 任务已分配给执行者
         TaskAssigned {
@@ -363,6 +364,7 @@ pub mod pallet {
                 task_id,
                 old_status,
                 new_status,
+                assignee: task.assignee.clone(),
             });
 
             Ok(())
