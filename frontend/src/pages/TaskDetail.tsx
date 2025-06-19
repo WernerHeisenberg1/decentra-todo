@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Tag, Typography, Spin, message, Modal } from 'antd';
+import { Card, Button, Tag, Typography, Spin, message } from 'antd';
 import { Task, TaskStatus } from '../types';
 import { useApi } from '../hooks/useApi';
 import TaskEvaluationModal from '../components/TaskEvaluationModal';
@@ -142,9 +142,14 @@ const TaskDetail: React.FC = () => {
           )}
           
           {task.status === TaskStatus.InProgress && (
-            <Button onClick={() => handleChangeStatus(TaskStatus.Completed)}>
-              标记完成
-            </Button>
+            <>
+              <Button onClick={() => handleChangeStatus(TaskStatus.PendingVerification)}>
+                请求社区验证
+              </Button>
+              <Button onClick={() => handleChangeStatus(TaskStatus.Completed)}>
+                直接标记完成
+              </Button>
+            </>
           )}
           
           {task.status === TaskStatus.Completed && (

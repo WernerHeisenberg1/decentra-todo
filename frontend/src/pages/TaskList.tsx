@@ -15,7 +15,6 @@ import {
 } from 'antd';
 import { 
   PlusOutlined,
-  UserOutlined,
 } from '@ant-design/icons';
 
 import { Task, TaskStatus, UserReputation, ReputationLevel } from '../types';

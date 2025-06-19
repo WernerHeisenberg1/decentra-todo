@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Modal, Button, Card, Progress, Tag, Typography, Spin, message } from 'antd';
 import { useApi } from '../hooks/useApi';
-import { Task, TaskStatus } from '../types';
 
 const { Title, Text } = Typography;
 
