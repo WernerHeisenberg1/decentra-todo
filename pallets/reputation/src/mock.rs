@@ -1,7 +1,7 @@
 use crate as pallet_reputation;
 use frame_support::{
     derive_impl, parameter_types,
-    traits::{ConstU128, ConstU16, ConstU32, ConstU64},
+    traits::{ConstU128, ConstU32, ConstU64},
 };
 use sp_core::H256;
 use sp_runtime::{
@@ -10,6 +10,14 @@ use sp_runtime::{
 };
 
 type Block = frame_system::mocking::MockBlock<Test>;
+
+// Mock randomness implementation
+pub struct MockRandomness;
+impl frame_support::traits::Randomness<H256, u64> for MockRandomness {
+    fn random(_subject: &[u8]) -> (H256, u64) {
+        (H256::default(), 0)
+    }
+}
 
 // Configure a mock runtime to test the pallet.
 frame_support::construct_runtime!(
@@ -30,6 +38,7 @@ impl frame_system::Config for Test {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Hash = H256;
     type Hashing = BlakeTwo256;
+    type AccountData = pallet_balances::AccountData<u128>;
 }
 
 impl pallet_balances::Config for Test {
@@ -64,19 +73,26 @@ parameter_types! {
     pub const MaxTasksPerStatus: u32 = 1000;
     pub const MaxTasksPerPriority: u32 = 1000;
     pub const MaxTasksPerDeadline: u32 = 1000;
+    pub const MinVerificationVotes: u32 = 3;
+    pub const MinApprovalPercentage: u32 = 60;
+    pub const VerificationPeriod: u64 = 100;
 }
 
 impl pallet_tasks::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type Balance = u128;
     type Moment = u64;
+    type Currency = Balances;
     type MaxTitleLength = MaxTitleLength;
     type MaxDescriptionLength = MaxDescriptionLength;
     type MaxTasksPerUser = MaxTasksPerUser;
     type MaxTasksPerStatus = MaxTasksPerStatus;
     type MaxTasksPerPriority = MaxTasksPerPriority;
     type MaxTasksPerDeadline = MaxTasksPerDeadline;
-    type Randomness = frame_support::traits::TestRandomness<Self>;
+    type Randomness = MockRandomness;
+    type MinVerificationVotes = MinVerificationVotes;
+    type MinApprovalPercentage = MinApprovalPercentage;
+    type VerificationPeriod = VerificationPeriod;
 }
 
 // 声誉pallet配置的常量
@@ -99,7 +115,7 @@ impl pallet_reputation::Config for Test {
     type BaseReputationScore = BaseReputationScore;
     type DifficultyBonus = DifficultyBonus;
     type CancellationPenalty = CancellationPenalty;
-    type Randomness = frame_support::traits::TestRandomness<Self>;
+    type Randomness = MockRandomness;
 }
 
 // Build genesis storage according to the mock runtime.
@@ -109,6 +125,7 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
     pallet_balances::GenesisConfig::<Test> {
         balances: vec![(1, 1000), (2, 1000), (3, 1000)],
+        dev_accounts: Default::default(),
     }
     .assimilate_storage(&mut t)
     .unwrap();

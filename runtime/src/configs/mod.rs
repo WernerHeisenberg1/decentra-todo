@@ -173,6 +173,10 @@ impl pallet_tasks::Config for Runtime {
     type MaxTasksPerPriority = ConstU32<10000>;
     type MaxTasksPerDeadline = ConstU32<10000>;
     type Randomness = pallet_insecure_randomness_collective_flip::Pallet<Runtime>;
+    // 社区验证配置
+    type MinVerificationVotes = ConstU32<3>; // 至少需要3个验证投票
+    type MinApprovalPercentage = ConstU32<60>; // 至少需要60%的赞成票
+    type VerificationPeriod = ConstU32<7200>; // 验证期限为7200个区块（约12小时，假设6秒一个区块）
 }
 
 // Reputation pallet configuration

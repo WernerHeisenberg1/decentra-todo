@@ -1,7 +1,7 @@
 use crate as pallet_tasks;
 use frame_support::{
-    parameter_types,
-    traits::{ConstU16, ConstU32, ConstU64, Randomness},
+    derive_impl, parameter_types,
+    traits::{ConstU128, ConstU32, ConstU64, Randomness},
 };
 use sp_runtime::{
     testing::H256,
@@ -23,41 +23,35 @@ impl Randomness<H256, u64> for MockRandomness {
 frame_support::construct_runtime!(
     pub struct Test {
         System: frame_system,
+        Balances: pallet_balances,
         Tasks: pallet_tasks,
     }
 );
 
+#[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
-    type BaseCallFilter = frame_support::traits::Everything;
-    type BlockWeights = ();
-    type BlockLength = ();
     type Block = Block;
-    type RuntimeOrigin = RuntimeOrigin;
-    type RuntimeCall = RuntimeCall;
-    type Nonce = u64;
-    type Hash = H256;
-    type Hashing = BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
+    type Hash = H256;
+    type Hashing = BlakeTwo256;
+}
+
+impl pallet_balances::Config for Test {
+    type MaxLocks = ConstU32<50>;
+    type MaxReserves = ();
+    type ReserveIdentifier = [u8; 8];
+    type Balance = u128;
     type RuntimeEvent = RuntimeEvent;
-    type BlockHashCount = ConstU64<250>;
-    type DbWeight = ();
-    type Version = ();
-    type PalletInfo = PalletInfo;
-    type AccountData = ();
-    type OnNewAccount = ();
-    type OnKilledAccount = ();
-    type SystemWeightInfo = ();
-    type SS58Prefix = ConstU16<42>;
-    type OnSetCode = ();
-    type MaxConsumers = ConstU32<16>;
-    type RuntimeTask = ();
-    type ExtensionsWeightInfo = ();
-    type SingleBlockMigrations = ();
-    type MultiBlockMigrator = ();
-    type PreInherents = ();
-    type PostInherents = ();
-    type PostTransactions = ();
+    type DustRemoval = ();
+    type ExistentialDeposit = ConstU128<500>;
+    type AccountStore = System;
+    type WeightInfo = pallet_balances::weights::SubstrateWeight<Test>;
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = ();
+    type RuntimeFreezeReason = ();
+    type DoneSlashHandler = ();
 }
 
 parameter_types! {
@@ -73,12 +67,19 @@ parameter_types! {
     pub const MaxTasksPerPriority: u32 = 1000;
     #[derive(Clone, PartialEq)]
     pub const MaxTasksPerDeadline: u32 = 1000;
+    #[derive(Clone, PartialEq)]
+    pub const MinVerificationVotes: u32 = 3;
+    #[derive(Clone, PartialEq)]
+    pub const MinApprovalPercentage: u32 = 60;
+    #[derive(Clone, PartialEq)]
+    pub const VerificationPeriod: u64 = 100;
 }
 
 impl pallet_tasks::Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    type Balance = u64;
+    type Balance = u128;
     type Moment = u64;
+    type Currency = Balances;
     type MaxTitleLength = MaxTitleLength;
     type MaxDescriptionLength = MaxDescriptionLength;
     type MaxTasksPerUser = MaxTasksPerUser;
@@ -86,13 +87,24 @@ impl pallet_tasks::Config for Test {
     type MaxTasksPerPriority = MaxTasksPerPriority;
     type MaxTasksPerDeadline = MaxTasksPerDeadline;
     type Randomness = MockRandomness;
+    type MinVerificationVotes = MinVerificationVotes;
+    type MinApprovalPercentage = MinApprovalPercentage;
+    type VerificationPeriod = VerificationPeriod;
 }
 
 // Build genesis storage according to the mock runtime.
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::<Test>::default()
+    let mut t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
         .unwrap();
+
+    pallet_balances::GenesisConfig::<Test> {
+        balances: vec![(1, 1000), (2, 1000), (3, 1000)],
+        dev_accounts: Default::default(),
+    }
+    .assimilate_storage(&mut t)
+    .unwrap();
+
     let mut ext = sp_io::TestExternalities::new(t);
     ext.execute_with(|| System::set_block_number(1));
     ext

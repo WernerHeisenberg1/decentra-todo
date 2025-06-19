@@ -19,14 +19,13 @@ fn evaluate_task_works() {
         // 分配任务
         assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 2));
 
-        // 将任务状态改为进行中
+        // 任务状态: Pending -> InProgress -> Completed
         assert_ok!(Tasks::change_task_status(
             RuntimeOrigin::signed(2),
             0,
             1, // InProgress
         ));
 
-        // 将任务状态改为已完成
         assert_ok!(Tasks::change_task_status(
             RuntimeOrigin::signed(2),
             0,
@@ -70,20 +69,34 @@ fn cannot_evaluate_own_task() {
             None, // No deadline
         ));
 
-        // 分配任务给自己
-        assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 1));
+        // 分配任务给其他人（而不是自己）
+        assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 2));
 
-        // 将任务状态改为已完成
+        // 任务状态: Pending -> InProgress -> Completed
         assert_ok!(Tasks::change_task_status(
-            RuntimeOrigin::signed(1),
+            RuntimeOrigin::signed(2),
+            0,
+            1, // InProgress
+        ));
+
+        assert_ok!(Tasks::change_task_status(
+            RuntimeOrigin::signed(2),
             0,
             2, // Completed
         ));
 
-        // 尝试评价自己的任务应该失败
+        // 尝试评价自己作为创建者的任务 - 这个应该成功，因为是创建者评价执行者
+        assert_ok!(Reputation::evaluate_task(
+            RuntimeOrigin::signed(1),
+            0,
+            4, // Excellent
+            b"Great work!".to_vec(),
+        ));
+
+        // 但是执行者不能评价自己完成的任务
         assert_noop!(
             Reputation::evaluate_task(
-                RuntimeOrigin::signed(1),
+                RuntimeOrigin::signed(2), // 执行者尝试评价自己
                 0,
                 4, // Excellent
                 b"Great work!".to_vec(),
@@ -109,6 +122,8 @@ fn cannot_evaluate_incomplete_task() {
 
         // 分配任务
         assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 2));
+
+        // 不改变状态为完成，任务仍处于Pending状态
 
         // 尝试评价未完成的任务应该失败
         assert_noop!(
@@ -140,7 +155,13 @@ fn cannot_evaluate_twice() {
         // 分配任务
         assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 2));
 
-        // 将任务状态改为已完成
+        // 任务状态: Pending -> InProgress -> Completed
+        assert_ok!(Tasks::change_task_status(
+            RuntimeOrigin::signed(2),
+            0,
+            1, // InProgress
+        ));
+
         assert_ok!(Tasks::change_task_status(
             RuntimeOrigin::signed(2),
             0,
@@ -202,7 +223,19 @@ fn reputation_calculation_works() {
 
         // 分配和完成任务
         assert_ok!(Tasks::assign_task(RuntimeOrigin::signed(1), 0, 2));
-        assert_ok!(Tasks::change_task_status(RuntimeOrigin::signed(2), 0, 2));
+
+        // 任务状态: Pending -> InProgress -> Completed
+        assert_ok!(Tasks::change_task_status(
+            RuntimeOrigin::signed(2),
+            0,
+            1, // InProgress
+        ));
+
+        assert_ok!(Tasks::change_task_status(
+            RuntimeOrigin::signed(2),
+            0,
+            2, // Completed
+        ));
 
         // 给予完美评分
         assert_ok!(Reputation::evaluate_task(

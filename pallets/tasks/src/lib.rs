@@ -78,6 +78,18 @@ pub mod pallet {
 
         /// 随机数生成器
         type Randomness: Randomness<Self::Hash, BlockNumberFor<Self>>;
+
+        /// 社区验证所需的最小投票数
+        #[pallet::constant]
+        type MinVerificationVotes: Get<u32>;
+
+        /// 社区验证通过所需的最小赞成票比例（百分比）
+        #[pallet::constant]
+        type MinApprovalPercentage: Get<u32>;
+
+        /// 验证投票期限（区块数）
+        #[pallet::constant]
+        type VerificationPeriod: Get<BlockNumberFor<Self>>;
     }
 
     /// 任务存储映射
@@ -135,6 +147,39 @@ pub mod pallet {
         ValueQuery,
     >;
 
+    /// 社区验证投票存储
+    #[pallet::storage]
+    #[pallet::getter(fn verification_votes)]
+    pub type VerificationVotes<T: Config> = StorageDoubleMap<
+        _,
+        Blake2_128Concat,
+        u32, // task_id
+        Blake2_128Concat,
+        T::AccountId, // voter
+        bool,         // true for approve, false for reject
+    >;
+
+    /// 任务验证状态
+    #[pallet::storage]
+    #[pallet::getter(fn verification_status)]
+    pub type VerificationStatus<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,                           // task_id
+        (BlockNumberFor<T>, u32, u32), // (end_block, approve_votes, reject_votes)
+    >;
+
+    /// 已参与验证投票的用户列表
+    #[pallet::storage]
+    #[pallet::getter(fn verification_voters)]
+    pub type VerificationVoters<T: Config> = StorageMap<
+        _,
+        Blake2_128Concat,
+        u32,                                      // task_id
+        BoundedVec<T::AccountId, ConstU32<1000>>, // 假设最多1000个投票者
+        ValueQuery,
+    >;
+
     // Pallets use events to inform users when important changes are made.
     #[pallet::event]
     #[pallet::generate_deposit(pub(super) fn deposit_event)]
@@ -188,6 +233,26 @@ pub mod pallet {
             creator: T::AccountId,
             reward: T::Balance,
         },
+        /// 社区验证已开始
+        CommunityVerificationStarted {
+            task_id: u32,
+            end_block: BlockNumberFor<T>,
+        },
+        /// 社区验证投票已提交
+        VerificationVoteSubmitted {
+            task_id: u32,
+            voter: T::AccountId,
+            approve: bool,
+        },
+        /// 社区验证已完成
+        CommunityVerificationCompleted {
+            task_id: u32,
+            approved: bool,
+            approve_votes: u32,
+            reject_votes: u32,
+        },
+        /// 社区验证已超时
+        CommunityVerificationExpired { task_id: u32 },
     }
 
     // Errors inform users that something went wrong.
@@ -223,6 +288,20 @@ pub mod pallet {
         InvalidReward,
         /// 奖励转移失败
         RewardTransferFailed,
+        /// 任务不在待验证状态
+        TaskNotPendingVerification,
+        /// 验证投票期间未结束
+        VerificationPeriodNotEnded,
+        /// 验证投票期间已结束
+        VerificationPeriodEnded,
+        /// 已经投过票了
+        AlreadyVoted,
+        /// 不能为自己创建或执行的任务投票
+        CannotVoteOwnTask,
+        /// 验证投票数量不足
+        InsufficientVerificationVotes,
+        /// 用户声誉不足，无法参与验证投票
+        InsufficientReputationToVote,
     }
 
     #[pallet::call]
@@ -435,6 +514,12 @@ pub mod pallet {
             // 验证状态转换
             Self::validate_status_transition(&task.status, &new_status)?;
 
+            // 如果转换到PendingVerification状态，启动社区验证
+            if new_status == 4 {
+                // PendingVerification
+                Self::start_community_verification(task_id)?;
+            }
+
             // 处理奖励发放和释放
             Self::handle_reward_on_status_change(&task, task.status, new_status)?;
 
@@ -605,6 +690,118 @@ pub mod pallet {
                 task_id,
                 deleted_by: who,
             });
+
+            Ok(())
+        }
+
+        /// 提交社区验证投票
+        #[pallet::weight(10_000)]
+        pub fn submit_verification_vote(
+            origin: OriginFor<T>,
+            task_id: u32,
+            approve: bool,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            // 检查任务是否存在
+            let task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
+
+            // 检查任务是否在待验证状态
+            ensure!(task.status == 4, Error::<T>::TaskNotPendingVerification);
+
+            // 检查验证期间是否还未结束
+            let (end_block, approve_votes, reject_votes) = VerificationStatus::<T>::get(task_id)
+                .ok_or(Error::<T>::TaskNotPendingVerification)?;
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            ensure!(
+                current_block <= end_block,
+                Error::<T>::VerificationPeriodEnded
+            );
+
+            // 检查是否已经投过票
+            ensure!(
+                !VerificationVotes::<T>::contains_key(task_id, &who),
+                Error::<T>::AlreadyVoted
+            );
+
+            // 检查不能为自己创建或执行的任务投票
+            ensure!(task.creator != who, Error::<T>::CannotVoteOwnTask);
+            if let Some(assignee) = &task.assignee {
+                ensure!(*assignee != who, Error::<T>::CannotVoteOwnTask);
+            }
+
+            // TODO: 检查用户声誉是否足够参与验证（可选）
+            // 这里可以添加声誉要求，例如要求用户达到一定等级才能参与验证
+
+            // 记录投票
+            VerificationVotes::<T>::insert(task_id, &who, approve);
+
+            // 更新投票计数
+            let new_approve_votes = if approve {
+                approve_votes + 1
+            } else {
+                approve_votes
+            };
+            let new_reject_votes = if approve {
+                reject_votes
+            } else {
+                reject_votes + 1
+            };
+
+            VerificationStatus::<T>::insert(
+                task_id,
+                (end_block, new_approve_votes, new_reject_votes),
+            );
+
+            // 添加到投票者列表
+            VerificationVoters::<T>::mutate(task_id, |voters| {
+                voters
+                    .try_push(who.clone())
+                    .map_err(|_| Error::<T>::TooManyTasks)
+            })?;
+
+            // 发出事件
+            Self::deposit_event(Event::VerificationVoteSubmitted {
+                task_id,
+                voter: who,
+                approve,
+            });
+
+            // 检查是否达到最小投票数，如果达到则尝试完成验证
+            let total_votes = new_approve_votes + new_reject_votes;
+            if total_votes >= T::MinVerificationVotes::get() {
+                Self::try_complete_verification(task_id)?;
+            }
+
+            Ok(())
+        }
+
+        /// 完成社区验证（手动触发，通常由定时任务或用户调用）
+        #[pallet::weight(10_000)]
+        pub fn complete_verification(origin: OriginFor<T>, task_id: u32) -> DispatchResult {
+            let _who = ensure_signed(origin)?;
+
+            // 检查验证状态
+            let (end_block, approve_votes, reject_votes) = VerificationStatus::<T>::get(task_id)
+                .ok_or(Error::<T>::TaskNotPendingVerification)?;
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let total_votes = approve_votes + reject_votes;
+
+            // 检查是否可以完成验证（投票期间结束或达到最小投票数）
+            let can_complete =
+                current_block > end_block || total_votes >= T::MinVerificationVotes::get();
+            ensure!(can_complete, Error::<T>::VerificationPeriodNotEnded);
+
+            // 如果投票期间已过但投票数不足，标记为过期
+            if current_block > end_block && total_votes < T::MinVerificationVotes::get() {
+                Self::handle_verification_expired(task_id)?;
+                return Ok(());
+            }
+
+            // 完成验证
+            Self::finalize_verification(task_id, approve_votes, reject_votes)?;
 
             Ok(())
         }
@@ -853,6 +1050,173 @@ pub mod pallet {
             }
 
             Ok(())
+        }
+    }
+
+    // 社区验证辅助函数
+    impl<T: Config> Pallet<T> {
+        /// 启动社区验证
+        fn start_community_verification(task_id: u32) -> DispatchResult {
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let end_block = current_block + T::VerificationPeriod::get();
+
+            // 初始化验证状态
+            VerificationStatus::<T>::insert(task_id, (end_block, 0u32, 0u32));
+
+            // 发出事件
+            Self::deposit_event(Event::CommunityVerificationStarted { task_id, end_block });
+
+            Ok(())
+        }
+
+        /// 尝试完成验证（当达到最小投票数时自动触发）
+        fn try_complete_verification(task_id: u32) -> DispatchResult {
+            let (end_block, approve_votes, reject_votes) = VerificationStatus::<T>::get(task_id)
+                .ok_or(Error::<T>::TaskNotPendingVerification)?;
+
+            let current_block = <frame_system::Pallet<T>>::block_number();
+            let total_votes = approve_votes + reject_votes;
+
+            // 只有在达到最小投票数时才自动完成
+            if total_votes >= T::MinVerificationVotes::get() {
+                // 检查是否在投票期间内
+                if current_block <= end_block {
+                    Self::finalize_verification(task_id, approve_votes, reject_votes)?;
+                }
+            }
+
+            Ok(())
+        }
+
+        /// 完成验证并更新任务状态
+        fn finalize_verification(
+            task_id: u32,
+            approve_votes: u32,
+            reject_votes: u32,
+        ) -> DispatchResult {
+            let total_votes = approve_votes + reject_votes;
+
+            // 检查是否有足够的投票
+            ensure!(
+                total_votes >= T::MinVerificationVotes::get(),
+                Error::<T>::InsufficientVerificationVotes
+            );
+
+            // 计算通过率
+            let approval_percentage = (approve_votes * 100) / total_votes;
+            let approved = approval_percentage >= T::MinApprovalPercentage::get();
+
+            // 获取任务并更新状态
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
+
+            let new_status = if approved {
+                2u8 // Completed
+            } else {
+                1u8 // InProgress - 回到进行中状态，需要重新提交
+            };
+
+            let old_status = task.status;
+            task.status = new_status;
+            task.updated_at = Self::current_timestamp();
+
+            // 存储更新后的任务
+            Tasks::<T>::insert(task_id, &task);
+
+            // 更新任务索引
+            Self::update_task_indices(&task)?;
+
+            // 如果验证通过，处理奖励发放
+            if approved {
+                Self::handle_reward_on_status_change(&task, old_status, new_status)?;
+            }
+
+            // 清理验证相关数据
+            Self::cleanup_verification_data(task_id)?;
+
+            // 发出事件
+            Self::deposit_event(Event::CommunityVerificationCompleted {
+                task_id,
+                approved,
+                approve_votes,
+                reject_votes,
+            });
+
+            Self::deposit_event(Event::TaskStatusChanged {
+                task_id,
+                old_status,
+                new_status,
+                assignee: task.assignee.clone(),
+            });
+
+            Ok(())
+        }
+
+        /// 处理验证过期
+        fn handle_verification_expired(task_id: u32) -> DispatchResult {
+            // 获取任务并回退到进行中状态
+            let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;
+
+            let old_status = task.status;
+            task.status = 1u8; // InProgress
+            task.updated_at = Self::current_timestamp();
+
+            // 存储更新后的任务
+            Tasks::<T>::insert(task_id, &task);
+
+            // 更新任务索引
+            Self::update_task_indices(&task)?;
+
+            // 清理验证相关数据
+            Self::cleanup_verification_data(task_id)?;
+
+            // 发出事件
+            Self::deposit_event(Event::CommunityVerificationExpired { task_id });
+
+            Self::deposit_event(Event::TaskStatusChanged {
+                task_id,
+                old_status,
+                new_status: task.status,
+                assignee: task.assignee.clone(),
+            });
+
+            Ok(())
+        }
+
+        /// 清理验证相关数据
+        fn cleanup_verification_data(task_id: u32) -> DispatchResult {
+            // 删除验证状态
+            VerificationStatus::<T>::remove(task_id);
+
+            // 清理投票记录
+            let voters = VerificationVoters::<T>::get(task_id);
+            for voter in voters.iter() {
+                VerificationVotes::<T>::remove(task_id, voter);
+            }
+
+            // 清理投票者列表
+            VerificationVoters::<T>::remove(task_id);
+
+            Ok(())
+        }
+
+        /// 获取任务的验证状态
+        pub fn get_verification_status(task_id: u32) -> Option<(BlockNumberFor<T>, u32, u32)> {
+            VerificationStatus::<T>::get(task_id)
+        }
+
+        /// 获取任务的投票者列表
+        pub fn get_verification_voters(task_id: u32) -> Vec<T::AccountId> {
+            VerificationVoters::<T>::get(task_id).into_inner()
+        }
+
+        /// 检查用户是否已为任务投票
+        pub fn has_voted(task_id: u32, voter: &T::AccountId) -> bool {
+            VerificationVotes::<T>::contains_key(task_id, voter)
+        }
+
+        /// 获取用户对任务的投票
+        pub fn get_vote(task_id: u32, voter: &T::AccountId) -> Option<bool> {
+            VerificationVotes::<T>::get(task_id, voter)
         }
     }
 }
