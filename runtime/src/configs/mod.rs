@@ -194,6 +194,63 @@ impl pallet_reputation::Config for Runtime {
     type Randomness = pallet_insecure_randomness_collective_flip::Pallet<Runtime>;
 }
 
+// NFTs pallet configuration
+parameter_types! {
+    pub const NftCollectionDeposit: Balance = 100;
+    pub const NftItemDeposit: Balance = 1;
+    pub const NftStringLimit: u32 = 256;
+    pub const NftKeyLimit: u32 = 64;
+    pub const NftValueLimit: u32 = 256;
+    pub Features: pallet_nfts::PalletFeatures = pallet_nfts::PalletFeatures::all_enabled();
+}
+
+impl pallet_nfts::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type CollectionId = u32;
+    type ItemId = u32;
+    type Currency = Balances;
+    type CreateOrigin =
+        frame_support::traits::AsEnsureOriginWithArg<frame_system::EnsureSigned<AccountId>>;
+    type ForceOrigin = frame_system::EnsureRoot<AccountId>;
+    type Locker = ();
+    type CollectionDeposit = NftCollectionDeposit;
+    type ItemDeposit = NftItemDeposit;
+    type MetadataDepositBase = ConstU128<1>;
+    type AttributeDepositBase = ConstU128<1>;
+    type DepositPerByte = ConstU128<1>;
+    type StringLimit = NftStringLimit;
+    type KeyLimit = NftKeyLimit;
+    type ValueLimit = NftValueLimit;
+    type ApprovalsLimit = ConstU32<20>;
+    type ItemAttributesApprovalsLimit = ConstU32<30>;
+    type MaxTips = ConstU32<10>;
+    type MaxDeadlineDuration = ConstU32<12960000>;
+    type MaxAttributesPerCall = ConstU32<10>;
+    type Features = Features;
+    type OffchainSignature = sp_runtime::MultiSignature;
+    type OffchainPublic = sp_runtime::MultiSigner;
+    type WeightInfo = pallet_nfts::weights::SubstrateWeight<Runtime>;
+    type BlockNumberProvider = frame_system::Pallet<Runtime>;
+    #[cfg(feature = "runtime-benchmarks")]
+    type Helper = ();
+}
+
+// Achievements pallet configuration
+impl pallet_achievements::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Balance = Balance;
+    type Moment = u64;
+    type CollectionId = u32;
+    type ItemId = u32;
+    type MaxNameLength = ConstU32<64>;
+    type MaxDescriptionLength = ConstU32<512>;
+    type MaxMetadataLength = ConstU32<256>;
+    type MaxUserAchievements = ConstU32<100>;
+    type MaxAchievements = ConstU32<1000>;
+    type Randomness = pallet_insecure_randomness_collective_flip::Pallet<Runtime>;
+    type Nfts = pallet_nfts::Pallet<Runtime>;
+}
+
 /// Configure the pallet-template in pallets/template.
 impl pallet_template::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;

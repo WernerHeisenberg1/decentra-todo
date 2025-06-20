@@ -235,7 +235,13 @@ mod runtime {
     #[runtime::pallet_index(9)]
     pub type Reputation = pallet_reputation;
 
-    // Include the custom logic from the pallet-template in the runtime.
     #[runtime::pallet_index(10)]
+    pub type Nfts = pallet_nfts;
+
+    #[runtime::pallet_index(11)]
+    pub type Achievements = pallet_achievements;
+
+    // Include the custom logic from the pallet-template in the runtime.
+    #[runtime::pallet_index(12)]
     pub type Template = pallet_template;
 }

@@ -20,6 +20,12 @@ sp-runtime = { version = "41.1.0", default-features = false }
 sp-core = { version = "36.1.0", default-features = false }
 sp-io = { version = "40.0.1", default-features = false }
 
+[dev-dependencies]
+pallet-balances = { version = "41.1.0" }
+sp-core = { version = "36.1.0" }
+sp-io = { version = "40.0.1" }
+sp-runtime = { version = "41.1.0" }
+
 [features]
 default = ["std"]
 std = [

@@ -29,6 +29,8 @@ pallet-insecure-randomness-collective-flip.workspace = true
 pallet-sudo.workspace = true
 pallet-tasks.workspace = true
 pallet-reputation.workspace = true
+pallet-achievements.workspace = true
+pallet-nfts.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-payment-rpc-runtime-api.workspace = true
@@ -72,6 +74,8 @@ std = [
 	"pallet-sudo/std",
 	"pallet-tasks/std",
 	"pallet-reputation/std",
+	"pallet-achievements/std",
+	"pallet-nfts/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
 	"pallet-transaction-payment-rpc-runtime-api/std",
@@ -105,6 +109,8 @@ runtime-benchmarks = [
 	"pallet-sudo/runtime-benchmarks",
 	"pallet-tasks/runtime-benchmarks",
 	"pallet-reputation/runtime-benchmarks",
+	"pallet-achievements/runtime-benchmarks",
+	"pallet-nfts/runtime-benchmarks",
 	"pallet-template/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
 	"pallet-transaction-payment/runtime-benchmarks",
@@ -123,6 +129,8 @@ try-runtime = [
 	"pallet-sudo/try-runtime",
 	"pallet-tasks/try-runtime",
 	"pallet-reputation/try-runtime",
+	"pallet-achievements/try-runtime",
+	"pallet-nfts/try-runtime",
 	"pallet-template/try-runtime",
 	"pallet-timestamp/try-runtime",
 	"pallet-transaction-payment/try-runtime",

@@ -1,7 +1,7 @@
 use crate as pallet_tasks;
 use frame_support::{
     derive_impl, parameter_types,
-    traits::{ConstU128, ConstU32, ConstU64, Randomness},
+    traits::{ConstU128, ConstU32, Randomness},
 };
 use sp_runtime::{
     testing::H256,
@@ -19,14 +19,31 @@ impl Randomness<H256, u64> for MockRandomness {
     }
 }
 
-// Configure a mock runtime to test the pallet.
-frame_support::construct_runtime!(
-    pub struct Test {
-        System: frame_system,
-        Balances: pallet_balances,
-        Tasks: pallet_tasks,
-    }
-);
+#[frame_support::runtime]
+mod runtime {
+    #[runtime::runtime]
+    #[runtime::derive(
+        RuntimeCall,
+        RuntimeEvent,
+        RuntimeError,
+        RuntimeOrigin,
+        RuntimeFreezeReason,
+        RuntimeHoldReason,
+        RuntimeSlashReason,
+        RuntimeLockId,
+        RuntimeTask
+    )]
+    pub struct Test;
+
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system::Pallet<Test>;
+
+    #[runtime::pallet_index(1)]
+    pub type Balances = pallet_balances::Pallet<Test>;
+
+    #[runtime::pallet_index(2)]
+    pub type Tasks = pallet_tasks::Pallet<Test>;
+}
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
@@ -35,6 +52,7 @@ impl frame_system::Config for Test {
     type Lookup = IdentityLookup<Self::AccountId>;
     type Hash = H256;
     type Hashing = BlakeTwo256;
+    type AccountData = pallet_balances::AccountData<u128>;
 }
 
 impl pallet_balances::Config for Test {
@@ -49,8 +67,8 @@ impl pallet_balances::Config for Test {
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Test>;
     type FreezeIdentifier = ();
     type MaxFreezes = ();
-    type RuntimeHoldReason = ();
-    type RuntimeFreezeReason = ();
+    type RuntimeHoldReason = RuntimeHoldReason;
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type DoneSlashHandler = ();
 }
 
