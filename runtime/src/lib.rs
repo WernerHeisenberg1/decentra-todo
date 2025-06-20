@@ -241,7 +241,10 @@ mod runtime {
     #[runtime::pallet_index(11)]
     pub type Achievements = pallet_achievements;
 
+    // #[runtime::pallet_index(12)]
+    // pub type Notifications = pallet_notifications;
+
     // Include the custom logic from the pallet-template in the runtime.
-    #[runtime::pallet_index(12)]
+    #[runtime::pallet_index(13)]
     pub type Template = pallet_template;
 }

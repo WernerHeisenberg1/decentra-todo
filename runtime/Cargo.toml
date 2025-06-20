@@ -30,6 +30,7 @@ pallet-sudo.workspace = true
 pallet-tasks.workspace = true
 pallet-reputation.workspace = true
 pallet-achievements.workspace = true
+pallet-notifications.workspace = true
 pallet-nfts.workspace = true
 pallet-template.workspace = true
 pallet-timestamp.workspace = true
@@ -75,6 +76,7 @@ std = [
 	"pallet-tasks/std",
 	"pallet-reputation/std",
 	"pallet-achievements/std",
+	"pallet-notifications/std",
 	"pallet-nfts/std",
 	"pallet-template/std",
 	"pallet-timestamp/std",
@@ -110,6 +112,7 @@ runtime-benchmarks = [
 	"pallet-tasks/runtime-benchmarks",
 	"pallet-reputation/runtime-benchmarks",
 	"pallet-achievements/runtime-benchmarks",
+	"pallet-notifications/runtime-benchmarks",
 	"pallet-nfts/runtime-benchmarks",
 	"pallet-template/runtime-benchmarks",
 	"pallet-timestamp/runtime-benchmarks",
@@ -130,6 +133,7 @@ try-runtime = [
 	"pallet-tasks/try-runtime",
 	"pallet-reputation/try-runtime",
 	"pallet-achievements/try-runtime",
+	"pallet-notifications/try-runtime",
 	"pallet-nfts/try-runtime",
 	"pallet-template/try-runtime",
 	"pallet-timestamp/try-runtime",

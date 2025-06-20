@@ -39,7 +39,7 @@ use sp_runtime::{traits::One, Perbill};
 use sp_version::RuntimeVersion;
 
 // Local module imports
-use super::{
+use crate::{
     AccountId, Aura, Balance, Balances, Block, BlockNumber, Hash, Nonce, PalletInfo, Runtime,
     RuntimeCall, RuntimeEvent, RuntimeFreezeReason, RuntimeHoldReason, RuntimeOrigin, RuntimeTask,
     System, EXISTENTIAL_DEPOSIT, SLOT_DURATION, VERSION,
@@ -252,6 +252,16 @@ impl pallet_achievements::Config for Runtime {
 }
 
 /// Configure the pallet-template in pallets/template.
+// Notifications pallet configuration (temporarily disabled)
+/*
+impl pallet_notifications::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type Moment = u64;
+    type MaxUserNotifications = ConstU32<100>;
+    type NotificationRetentionPeriod = ConstU32<100800>; // 7 days in blocks
+}
+*/
+
 impl pallet_template::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = pallet_template::weights::SubstrateWeight<Runtime>;

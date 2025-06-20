@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserOutlined, DownOutlined } from '@ant-design/icons';
 import { useApi } from '../hooks/useApi';
 import QuickSearch from './QuickSearch';
+import NotificationCenter from './NotificationCenter';
 import { Task } from '../types';
 
 const { Header } = Layout;
@@ -113,6 +114,11 @@ const Navbar: React.FC = () => {
       </div>
 
       <Space>
+        {/* 通知中心 */}
+        {isConnected && selectedAccount && (
+          <NotificationCenter />
+        )}
+        
         {isConnected && selectedAccount ? (
           <Dropdown 
             menu={{ items: accountMenuItems }}

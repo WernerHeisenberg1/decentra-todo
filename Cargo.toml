@@ -12,6 +12,7 @@ members = [
     "pallets/tasks",
     "pallets/reputation",
     "pallets/achievements",
+    "pallets/notifications",
     "runtime",
 ]
 resolver = "2"
@@ -22,6 +23,7 @@ pallet-template = { path = "./pallets/template", default-features = false }
 pallet-tasks = { path = "./pallets/tasks", default-features = false }
 pallet-reputation = { path = "./pallets/reputation", default-features = false }
 pallet-achievements = { path = "./pallets/achievements", default-features = false }
+pallet-notifications = { path = "./pallets/notifications", default-features = false }
 pallet-nfts = { version = "34.1.0", default-features = false }
 clap = { version = "4.5.13" }
 frame-benchmarking-cli = { version = "47.0.0", default-features = false }

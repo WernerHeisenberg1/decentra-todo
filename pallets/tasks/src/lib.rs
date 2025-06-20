@@ -30,7 +30,7 @@ pub mod pallet {
         traits::{Currency, Get, Randomness, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion, Saturating};
+    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
     use sp_std::vec::Vec;
 
     #[pallet::pallet]
@@ -402,6 +402,13 @@ pub mod pallet {
                 title: bounded_title.to_vec(),
             });
 
+            // TODO: 集成通知系统 - 通知创建者任务创建成功
+            // let _ = pallet_notifications::Pallet::<T>::on_task_created(
+            //     &creator,
+            //     task_id,
+            //     bounded_title.to_vec(),
+            // );
+
             // 发出奖励预留事件
             Self::deposit_event(Event::TaskRewardReserved {
                 task_id,
@@ -559,6 +566,21 @@ pub mod pallet {
             //     )?;
             // }
 
+            // TODO: 集成通知系统 - 通知相关用户任务状态变更
+            // if let Some(assignee) = &task.assignee {
+            //     // 通知执行者
+            //     let _ = pallet_notifications::Pallet::<T>::on_task_status_changed(
+            //         assignee, task_id, old_status, new_status,
+            //     );
+            // }
+            // // 通知创建者
+            // let _ = pallet_notifications::Pallet::<T>::on_task_status_changed(
+            //     &task.creator,
+            //     task_id,
+            //     old_status,
+            //     new_status,
+            // );
+
             // 发出事件
             Self::deposit_event(Event::TaskStatusChanged {
                 task_id,
@@ -615,7 +637,17 @@ pub mod pallet {
             })?;
 
             // 发出事件
-            Self::deposit_event(Event::TaskAssigned { task_id, assignee });
+            Self::deposit_event(Event::TaskAssigned {
+                task_id,
+                assignee: assignee.clone(),
+            });
+
+            // TODO: 集成通知系统 - 通知被分配者
+            // let _ = pallet_notifications::Pallet::<T>::on_task_assigned(
+            //     &assignee,
+            //     task_id,
+            //     task.title.to_vec(),
+            // );
 
             Ok(())
         }
@@ -1533,6 +1565,7 @@ pub mod pallet {
         }
 
         /// 处理验证过期
+        #[allow(dead_code)]
         fn handle_verification_expired(task_id: u32) -> DispatchResult {
             // 获取任务并回退到进行中状态
             let mut task = Tasks::<T>::get(task_id).ok_or(Error::<T>::TaskNotFound)?;

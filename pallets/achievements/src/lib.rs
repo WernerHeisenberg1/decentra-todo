@@ -431,6 +431,7 @@ pub mod pallet {
         }
 
         /// 为成就创建NFT集合
+        #[allow(dead_code)]
         fn create_achievement_collection(
             achievement_id: u32,
         ) -> Result<T::CollectionId, DispatchError> {
@@ -558,10 +559,18 @@ pub mod pallet {
                 rarity: rarity_u8,
             });
 
+            // TODO: 集成通知系统 - 通知用户成就解锁
+            // let _ = pallet_notifications::Pallet::<T>::on_achievement_unlocked(
+            //     user,
+            //     achievement_id,
+            //     achievement.name.to_vec(),
+            // );
+
             Ok(())
         }
 
         /// 铸造成就NFT
+        #[allow(dead_code)]
         fn mint_achievement_nft(
             user: &T::AccountId,
             achievement: &Achievement<BoundedVec<u8, T::MaxNameLength>>,
