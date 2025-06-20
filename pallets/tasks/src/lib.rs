@@ -30,7 +30,7 @@ pub mod pallet {
         traits::{Currency, Get, Randomness, ReservableCurrency},
     };
     use frame_system::pallet_prelude::*;
-    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion};
+    use sp_runtime::traits::{AtLeast32BitUnsigned, SaturatedConversion, Saturating};
     use sp_std::vec::Vec;
 
     #[pallet::pallet]
@@ -1204,6 +1204,74 @@ pub mod pallet {
                 avg_difficulty,
                 overdue_count,
             }
+        }
+
+        /// 获取顶级表现者（按完成任务数量排序）
+        pub fn get_top_performers(limit: u32) -> Vec<(T::AccountId, u32, T::Balance)> {
+            let mut performers: sp_std::collections::btree_map::BTreeMap<
+                T::AccountId,
+                (u32, T::Balance),
+            > = sp_std::collections::btree_map::BTreeMap::new();
+
+            // 统计每个用户的完成任务数和总奖励
+            for task in Tasks::<T>::iter_values() {
+                if task.status == 2 {
+                    // 已完成状态
+                    if let Some(assignee) = &task.assignee {
+                        let entry = performers
+                            .entry(assignee.clone())
+                            .or_insert((0, T::Balance::default()));
+                        entry.0 += 1; // 完成任务数
+                        entry.1 = entry.1 + task.reward; // 总奖励
+                    }
+                }
+            }
+
+            // 转换为Vec并按完成任务数排序
+            let mut result: Vec<(T::AccountId, u32, T::Balance)> = performers
+                .into_iter()
+                .map(|(account, (completed_tasks, total_rewards))| {
+                    (account, completed_tasks, total_rewards)
+                })
+                .collect();
+
+            result.sort_by(|a, b| b.1.cmp(&a.1)); // 按完成任务数降序排序
+            result.truncate(limit as usize);
+
+            result
+        }
+
+        /// 获取平台总用户数（参与过任务的用户）
+        pub fn get_total_users() -> u32 {
+            let mut users = sp_std::collections::btree_set::BTreeSet::new();
+
+            for task in Tasks::<T>::iter_values() {
+                users.insert(task.creator.clone());
+                if let Some(assignee) = &task.assignee {
+                    users.insert(assignee.clone());
+                }
+            }
+
+            users.len() as u32
+        }
+
+        /// 获取活跃用户数（最近30天有活动的用户）
+        pub fn get_active_users() -> u32 {
+            let mut active_users = sp_std::collections::btree_set::BTreeSet::new();
+            let current_time = Self::current_timestamp();
+            let thirty_days_ago = current_time - T::Moment::saturated_from(30 * 86400u32);
+
+            for task in Tasks::<T>::iter_values() {
+                // 检查任务是否在最近30天内有活动
+                if task.created_at >= thirty_days_ago || task.updated_at >= thirty_days_ago {
+                    active_users.insert(task.creator.clone());
+                    if let Some(assignee) = &task.assignee {
+                        active_users.insert(assignee.clone());
+                    }
+                }
+            }
+
+            active_users.len() as u32
         }
 
         /// 更新任务索引
