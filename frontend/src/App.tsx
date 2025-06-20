@@ -6,6 +6,7 @@ import Navbar from './components/Navbar';
 import TaskList from './pages/TaskList';
 import TaskDetail from './pages/TaskDetail';
 import CreateTask from './pages/CreateTask';
+import Dashboard from './pages/Dashboard';
 
 const { Content } = Layout;
 
@@ -17,10 +18,11 @@ const App: React.FC = () => {
           <Navbar />
           <Content>
             <Routes>
+              <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/tasks" element={<TaskList />} />
               <Route path="/tasks/:id" element={<TaskDetail />} />
               <Route path="/tasks/create" element={<CreateTask />} />
-              <Route path="/" element={<TaskList />} />
+              <Route path="/" element={<Dashboard />} />
             </Routes>
           </Content>
         </Layout>

@@ -89,4 +89,95 @@ export interface ApiContextType {
   isConnected: boolean;
   connect: () => Promise<void>;
   selectAccount: (account: AccountId) => void;
+}
+
+// 新增数据统计相关类型
+export interface PlatformStatistics {
+  totalUsers: number;
+  totalTasks: number;
+  completedTasks: number;
+  pendingTasks: number;
+  inProgressTasks: number;
+  cancelledTasks: number;
+  totalRewards: number;
+  averageTaskDifficulty: number;
+  completionRate: number;
+  activeUsers: number;
+  topPerformers: UserPerformance[];
+  taskStatusDistribution: TaskStatusCount[];
+  priorityDistribution: TaskPriorityCount[];
+  difficultyDistribution: TaskDifficultyCount[];
+  rewardDistribution: RewardRange[];
+  lastUpdated: number;
+}
+
+export interface UserPerformance {
+  user: string;
+  completedTasks: number;
+  totalRewards: number;
+  averageRating: number;
+  reputation: number;
+  achievements: number;
+}
+
+export interface TaskStatusCount {
+  status: TaskStatus;
+  count: number;
+  percentage: number;
+}
+
+export interface TaskPriorityCount {
+  priority: TaskPriority;
+  count: number;
+  percentage: number;
+}
+
+export interface TaskDifficultyCount {
+  difficulty: number;
+  count: number;
+  percentage: number;
+}
+
+export interface RewardRange {
+  range: string;
+  count: number;
+  totalRewards: number;
+  percentage: number;
+}
+
+export interface TrendData {
+  date: string;
+  tasksCreated: number;
+  tasksCompleted: number;
+  newUsers: number;
+  totalRewards: number;
+}
+
+export interface DashboardData {
+  platformStats: PlatformStatistics;
+  trendData: TrendData[];
+  userStats: UserReputation;
+  recentAchievements: Achievement[];
+}
+
+export interface Achievement {
+  id: number;
+  name: string;
+  description: string;
+  type: string;
+  rarity: string;
+  earnedAt: number;
+  user?: string;
+}
+
+// 图表数据类型
+export interface ChartData {
+  name: string;
+  value: number;
+  percentage?: number;
+}
+
+export interface LineChartData {
+  date: string;
+  [key: string]: string | number;
 } 

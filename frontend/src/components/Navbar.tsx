@@ -70,8 +70,12 @@ const Navbar: React.FC = () => {
 
   const menuItems = [
     {
-      key: '/',
-      label: <Link to="/">任务列表</Link>,
+      key: '/dashboard',
+      label: <Link to="/dashboard">统计看板</Link>,
+    },
+    {
+      key: '/tasks',
+      label: <Link to="/tasks">任务列表</Link>,
     },
     {
       key: '/tasks/create',
