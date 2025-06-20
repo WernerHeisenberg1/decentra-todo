@@ -22,7 +22,7 @@ mod tests;
 
 #[frame_support::pallet(dev_mode)]
 pub mod pallet {
-    use super::types::{Task, TaskStatus};
+    use super::types::{Task, TaskSearchParams, TaskSortBy, TaskStatistics, TaskStatus};
     use codec::MaxEncodedLen;
     use frame_support::{
         dispatch::DispatchResult,
@@ -43,10 +43,22 @@ pub mod pallet {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// The balance type
-        type Balance: Member + Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        type Balance: Member
+            + Parameter
+            + AtLeast32BitUnsigned
+            + Default
+            + Copy
+            + MaxEncodedLen
+            + core::fmt::Debug;
 
         /// The moment type for timestamps (using BlockNumber for simplicity)
-        type Moment: Member + Parameter + AtLeast32BitUnsigned + Default + Copy + MaxEncodedLen;
+        type Moment: Member
+            + Parameter
+            + AtLeast32BitUnsigned
+            + Default
+            + Copy
+            + MaxEncodedLen
+            + core::fmt::Debug;
 
         /// Currency type for handling token transfers
         type Currency: Currency<Self::AccountId, Balance = Self::Balance>
@@ -777,33 +789,12 @@ pub mod pallet {
             Ok(())
         }
 
-        /// 完成社区验证（手动触发，通常由定时任务或用户调用）
+        /// 完成社区验证
         #[pallet::weight(10_000)]
         pub fn complete_verification(origin: OriginFor<T>, task_id: u32) -> DispatchResult {
             let _who = ensure_signed(origin)?;
 
-            // 检查验证状态
-            let (end_block, approve_votes, reject_votes) = VerificationStatus::<T>::get(task_id)
-                .ok_or(Error::<T>::TaskNotPendingVerification)?;
-
-            let current_block = <frame_system::Pallet<T>>::block_number();
-            let total_votes = approve_votes + reject_votes;
-
-            // 检查是否可以完成验证（投票期间结束或达到最小投票数）
-            let can_complete =
-                current_block > end_block || total_votes >= T::MinVerificationVotes::get();
-            ensure!(can_complete, Error::<T>::VerificationPeriodNotEnded);
-
-            // 如果投票期间已过但投票数不足，标记为过期
-            if current_block > end_block && total_votes < T::MinVerificationVotes::get() {
-                Self::handle_verification_expired(task_id)?;
-                return Ok(());
-            }
-
-            // 完成验证
-            Self::finalize_verification(task_id, approve_votes, reject_votes)?;
-
-            Ok(())
+            Self::try_complete_verification(task_id)
         }
     }
 
@@ -891,6 +882,328 @@ pub mod pallet {
             }
 
             expiring_tasks
+        }
+
+        /// 高级搜索：根据多个条件搜索任务
+        pub fn search_tasks(search_params: TaskSearchParams<T>) -> Vec<Task<T>> {
+            let mut all_tasks: Vec<Task<T>> = Tasks::<T>::iter_values().collect();
+
+            // 应用所有过滤条件
+            if !search_params.keyword.is_empty() {
+                all_tasks.retain(|task| {
+                    let keyword_lower = sp_std::str::from_utf8(&search_params.keyword)
+                        .unwrap_or("")
+                        .to_lowercase();
+
+                    let title_match = sp_std::str::from_utf8(&task.title)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    let desc_match = sp_std::str::from_utf8(&task.description)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    title_match || desc_match
+                });
+            }
+
+            // 按状态筛选
+            if let Some(status) = search_params.status {
+                all_tasks.retain(|task| task.status == status);
+            }
+
+            // 按优先级筛选
+            if let Some(priority) = search_params.priority {
+                all_tasks.retain(|task| task.priority == priority);
+            }
+
+            // 按难度范围筛选
+            if let Some((min_difficulty, max_difficulty)) = search_params.difficulty_range {
+                all_tasks.retain(|task| {
+                    task.difficulty >= min_difficulty && task.difficulty <= max_difficulty
+                });
+            }
+
+            // 按奖励范围筛选
+            if let Some((min_reward, max_reward)) = search_params.reward_range {
+                all_tasks.retain(|task| task.reward >= min_reward && task.reward <= max_reward);
+            }
+
+            // 按创建者筛选
+            if let Some(ref creator) = search_params.creator {
+                all_tasks.retain(|task| task.creator == *creator);
+            }
+
+            // 按执行者筛选
+            if let Some(ref assignee) = search_params.assignee {
+                all_tasks.retain(|task| {
+                    if let Some(ref task_assignee) = task.assignee {
+                        task_assignee == assignee
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            // 按截止日期范围筛选
+            if let Some((start_date, end_date)) = search_params.deadline_range {
+                all_tasks.retain(|task| {
+                    if let Some(deadline) = task.deadline {
+                        deadline >= start_date && deadline <= end_date
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            // 按创建时间范围筛选
+            if let Some((start_time, end_time)) = search_params.created_time_range {
+                all_tasks
+                    .retain(|task| task.created_at >= start_time && task.created_at <= end_time);
+            }
+
+            // 只显示有截止日期的任务
+            if search_params.has_deadline {
+                all_tasks.retain(|task| task.deadline.is_some());
+            }
+
+            // 只显示未分配的任务
+            if search_params.unassigned_only {
+                all_tasks.retain(|task| task.assignee.is_none());
+            }
+
+            // 排序
+            match search_params.sort_by {
+                TaskSortBy::CreatedAt => {
+                    all_tasks.sort_by(|a, b| {
+                        if search_params.sort_desc {
+                            b.created_at.cmp(&a.created_at)
+                        } else {
+                            a.created_at.cmp(&b.created_at)
+                        }
+                    });
+                }
+                TaskSortBy::UpdatedAt => {
+                    all_tasks.sort_by(|a, b| {
+                        if search_params.sort_desc {
+                            b.updated_at.cmp(&a.updated_at)
+                        } else {
+                            a.updated_at.cmp(&b.updated_at)
+                        }
+                    });
+                }
+                TaskSortBy::Deadline => {
+                    all_tasks.sort_by(|a, b| {
+                        let a_deadline = a.deadline.unwrap_or(T::Moment::from(u32::MAX));
+                        let b_deadline = b.deadline.unwrap_or(T::Moment::from(u32::MAX));
+                        if search_params.sort_desc {
+                            b_deadline.cmp(&a_deadline)
+                        } else {
+                            a_deadline.cmp(&b_deadline)
+                        }
+                    });
+                }
+                TaskSortBy::Reward => {
+                    all_tasks.sort_by(|a, b| {
+                        if search_params.sort_desc {
+                            b.reward.cmp(&a.reward)
+                        } else {
+                            a.reward.cmp(&b.reward)
+                        }
+                    });
+                }
+                TaskSortBy::Difficulty => {
+                    all_tasks.sort_by(|a, b| {
+                        if search_params.sort_desc {
+                            b.difficulty.cmp(&a.difficulty)
+                        } else {
+                            a.difficulty.cmp(&b.difficulty)
+                        }
+                    });
+                }
+                TaskSortBy::Priority => {
+                    all_tasks.sort_by(|a, b| {
+                        if search_params.sort_desc {
+                            b.priority.cmp(&a.priority)
+                        } else {
+                            a.priority.cmp(&b.priority)
+                        }
+                    });
+                }
+            }
+
+            // 分页
+            let start_index = (search_params.page * search_params.page_size) as usize;
+            let page_size = search_params.page_size as usize;
+
+            if start_index < all_tasks.len() {
+                all_tasks
+                    .into_iter()
+                    .skip(start_index)
+                    .take(page_size)
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+
+        /// 获取搜索结果总数（用于分页）
+        pub fn count_search_results(search_params: TaskSearchParams<T>) -> u32 {
+            let mut all_tasks: Vec<Task<T>> = Tasks::<T>::iter_values().collect();
+
+            // 应用过滤条件（除了分页和排序）
+            if !search_params.keyword.is_empty() {
+                all_tasks.retain(|task| {
+                    let keyword_lower = sp_std::str::from_utf8(&search_params.keyword)
+                        .unwrap_or("")
+                        .to_lowercase();
+
+                    let title_match = sp_std::str::from_utf8(&task.title)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    let desc_match = sp_std::str::from_utf8(&task.description)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    title_match || desc_match
+                });
+            }
+
+            if let Some(status) = search_params.status {
+                all_tasks.retain(|task| task.status == status);
+            }
+
+            if let Some(priority) = search_params.priority {
+                all_tasks.retain(|task| task.priority == priority);
+            }
+
+            if let Some((min_difficulty, max_difficulty)) = search_params.difficulty_range {
+                all_tasks.retain(|task| {
+                    task.difficulty >= min_difficulty && task.difficulty <= max_difficulty
+                });
+            }
+
+            if let Some((min_reward, max_reward)) = search_params.reward_range {
+                all_tasks.retain(|task| task.reward >= min_reward && task.reward <= max_reward);
+            }
+
+            if let Some(ref creator) = search_params.creator {
+                all_tasks.retain(|task| task.creator == *creator);
+            }
+
+            if let Some(ref assignee) = search_params.assignee {
+                all_tasks.retain(|task| {
+                    if let Some(ref task_assignee) = task.assignee {
+                        task_assignee == assignee
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            if let Some((start_date, end_date)) = search_params.deadline_range {
+                all_tasks.retain(|task| {
+                    if let Some(deadline) = task.deadline {
+                        deadline >= start_date && deadline <= end_date
+                    } else {
+                        false
+                    }
+                });
+            }
+
+            if let Some((start_time, end_time)) = search_params.created_time_range {
+                all_tasks
+                    .retain(|task| task.created_at >= start_time && task.created_at <= end_time);
+            }
+
+            if search_params.has_deadline {
+                all_tasks.retain(|task| task.deadline.is_some());
+            }
+
+            if search_params.unassigned_only {
+                all_tasks.retain(|task| task.assignee.is_none());
+            }
+
+            all_tasks.len() as u32
+        }
+
+        /// 快速搜索：仅按关键词搜索标题和描述
+        pub fn quick_search(keyword: Vec<u8>) -> Vec<Task<T>> {
+            if keyword.is_empty() {
+                return Vec::new();
+            }
+
+            let keyword_lower = sp_std::str::from_utf8(&keyword)
+                .unwrap_or("")
+                .to_lowercase();
+
+            Tasks::<T>::iter_values()
+                .filter(|task| {
+                    let title_match = sp_std::str::from_utf8(&task.title)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    let desc_match = sp_std::str::from_utf8(&task.description)
+                        .unwrap_or("")
+                        .to_lowercase()
+                        .contains(&keyword_lower);
+
+                    title_match || desc_match
+                })
+                .collect()
+        }
+
+        /// 获取任务统计信息
+        pub fn get_task_statistics() -> TaskStatistics<T> {
+            let all_tasks: Vec<Task<T>> = Tasks::<T>::iter_values().collect();
+
+            let total_tasks = all_tasks.len() as u32;
+            let pending_count = all_tasks.iter().filter(|t| t.status == 0).count() as u32;
+            let in_progress_count = all_tasks.iter().filter(|t| t.status == 1).count() as u32;
+            let completed_count = all_tasks.iter().filter(|t| t.status == 2).count() as u32;
+            let cancelled_count = all_tasks.iter().filter(|t| t.status == 3).count() as u32;
+            let pending_verification_count =
+                all_tasks.iter().filter(|t| t.status == 4).count() as u32;
+
+            let total_reward = all_tasks
+                .iter()
+                .map(|t| t.reward)
+                .fold(T::Balance::default(), |acc, reward| acc + reward);
+            let avg_difficulty = if total_tasks > 0 {
+                all_tasks.iter().map(|t| t.difficulty as u32).sum::<u32>() / total_tasks
+            } else {
+                0
+            };
+
+            let now = Self::current_timestamp();
+            let overdue_count = all_tasks
+                .iter()
+                .filter(|t| {
+                    if let Some(deadline) = t.deadline {
+                        deadline <= now && t.status != 2 && t.status != 3 // 不是已完成或已取消
+                    } else {
+                        false
+                    }
+                })
+                .count() as u32;
+
+            TaskStatistics {
+                total_tasks,
+                pending_count,
+                in_progress_count,
+                completed_count,
+                cancelled_count,
+                pending_verification_count,
+                total_reward,
+                avg_difficulty,
+                overdue_count,
+            }
         }
 
         /// 更新任务索引

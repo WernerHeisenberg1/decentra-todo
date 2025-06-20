@@ -1,6 +1,7 @@
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::pallet_prelude::*;
 use scale_info::TypeInfo;
+use sp_std::vec::Vec;
 
 /// 任务状态枚举
 #[derive(
@@ -242,4 +243,109 @@ impl<T: crate::pallet::Config> Task<T> {
     pub fn needs_verification(&self) -> bool {
         self.status == 4 // PendingVerification
     }
+}
+
+/// 任务搜索参数
+#[derive(Debug, Encode, Decode, Clone, PartialEq, Eq, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct TaskSearchParams<T: crate::pallet::Config> {
+    /// 关键词搜索（标题和描述）
+    pub keyword: Vec<u8>,
+    /// 状态筛选
+    pub status: Option<u8>,
+    /// 优先级筛选
+    pub priority: Option<u8>,
+    /// 难度范围筛选 (min, max)
+    pub difficulty_range: Option<(u8, u8)>,
+    /// 奖励范围筛选 (min, max)
+    pub reward_range: Option<(T::Balance, T::Balance)>,
+    /// 创建者筛选
+    pub creator: Option<T::AccountId>,
+    /// 执行者筛选
+    pub assignee: Option<T::AccountId>,
+    /// 截止日期范围筛选 (start, end)
+    pub deadline_range: Option<(T::Moment, T::Moment)>,
+    /// 创建时间范围筛选 (start, end)
+    pub created_time_range: Option<(T::Moment, T::Moment)>,
+    /// 只显示有截止日期的任务
+    pub has_deadline: bool,
+    /// 只显示未分配的任务
+    pub unassigned_only: bool,
+    /// 排序方式
+    pub sort_by: TaskSortBy,
+    /// 是否降序排列
+    pub sort_desc: bool,
+    /// 页码（从0开始）
+    pub page: u32,
+    /// 每页大小
+    pub page_size: u32,
+}
+
+impl<T: crate::pallet::Config> Default for TaskSearchParams<T> {
+    fn default() -> Self {
+        Self {
+            keyword: Vec::new(),
+            status: None,
+            priority: None,
+            difficulty_range: None,
+            reward_range: None,
+            creator: None,
+            assignee: None,
+            deadline_range: None,
+            created_time_range: None,
+            has_deadline: false,
+            unassigned_only: false,
+            sort_by: TaskSortBy::CreatedAt,
+            sort_desc: true,
+            page: 0,
+            page_size: 10,
+        }
+    }
+}
+
+/// 任务排序方式
+#[derive(Encode, Decode, Clone, Copy, PartialEq, Eq, RuntimeDebug, TypeInfo)]
+pub enum TaskSortBy {
+    /// 按创建时间排序
+    CreatedAt,
+    /// 按更新时间排序
+    UpdatedAt,
+    /// 按截止时间排序
+    Deadline,
+    /// 按奖励金额排序
+    Reward,
+    /// 按难度排序
+    Difficulty,
+    /// 按优先级排序
+    Priority,
+}
+
+impl Default for TaskSortBy {
+    fn default() -> Self {
+        TaskSortBy::CreatedAt
+    }
+}
+
+/// 任务统计信息
+#[derive(Encode, Decode, Clone, PartialEq, Eq, TypeInfo)]
+#[scale_info(skip_type_params(T))]
+pub struct TaskStatistics<T: crate::pallet::Config> {
+    /// 总任务数
+    pub total_tasks: u32,
+    /// 待处理任务数
+    pub pending_count: u32,
+    /// 进行中任务数
+    pub in_progress_count: u32,
+    /// 已完成任务数
+    pub completed_count: u32,
+    /// 已取消任务数
+    pub cancelled_count: u32,
+    /// 待验证任务数
+    pub pending_verification_count: u32,
+    /// 总奖励金额
+    pub total_reward: T::Balance,
+    /// 平均难度
+    pub avg_difficulty: u32,
+    /// 逾期任务数
+    pub overdue_count: u32,
 }

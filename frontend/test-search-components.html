@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级搜索功能测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .test-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+        
+        .test-section h2 {
+            margin-top: 0;
+            color: #343a40;
+        }
+        
+        .test-case {
+            background: white;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .test-case h3 {
+            margin-top: 0;
+            color: #495057;
+            font-size: 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #495057;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.secondary:hover {
+            background: #545b62;
+        }
+        
+        .results {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .task-item {
+            border: 1px solid #e9ecef;
+            border-radius: 4px;
+            padding: 12px;
+            margin-bottom: 10px;
+            background: #f8f9fa;
+        }
+        
+        .task-title {
+            font-weight: 600;
+            color: #212529;
+            margin-bottom: 5px;
+        }
+        
+        .task-meta {
+            font-size: 12px;
+            color: #6c757d;
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .status-pending { background: #fff3cd; }
+        .status-progress { background: #cce5ff; }
+        .status-completed { background: #d4edda; }
+        
+        .highlight {
+            background: yellow;
+            font-weight: bold;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-card {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            padding: 15px;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 高级搜索功能测试</h1>
+    
+    <div class="test-section">
+        <h2>1. 基础搜索表单</h2>
+        <div class="test-case">
+            <h3>搜索条件</h3>
+            <form id="searchForm">
+                <div class="form-group">
+                    <label for="keyword">关键词搜索</label>
+                    <input type="text" id="keyword" placeholder="搜索任务标题或描述...">
+                </div>
+                
+                <div class="form-group">
+                    <label for="status">任务状态</label>
+                    <select id="status">
+                        <option value="">全部状态</option>
+                        <option value="0">待处理</option>
+                        <option value="1">进行中</option>
+                        <option value="2">已完成</option>
+                        <option value="3">已取消</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="priority">优先级</label>
+                    <select id="priority">
+                        <option value="">全部优先级</option>
+                        <option value="1">低</option>
+                        <option value="2">中</option>
+                        <option value="3">高</option>
+                        <option value="4">紧急</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="difficultyMin">难度范围: <span id="difficultyDisplay">1 - 10</span></label>
+                    <input type="range" id="difficultyMin" min="1" max="10" value="1">
+                    <input type="range" id="difficultyMax" min="1" max="10" value="10">
+                </div>
+                
+                <div class="form-group">
+                    <label for="rewardMin">奖励范围</label>
+                    <input type="number" id="rewardMin" placeholder="最小奖励" min="0">
+                    <input type="number" id="rewardMax" placeholder="最大奖励" min="0">
+                </div>
+                
+                <div class="form-group">
+                    <label for="creator">创建者地址</label>
+                    <input type="text" id="creator" placeholder="输入创建者地址...">
+                </div>
+                
+                <div class="form-group">
+                    <label for="sortBy">排序方式</label>
+                    <select id="sortBy">
+                        <option value="created_at">创建时间</option>
+                        <option value="reward">奖励金额</option>
+                        <option value="difficulty">难度</option>
+                        <option value="priority">优先级</option>
+                        <option value="deadline">截止时间</option>
+                    </select>
+                    <label>
+                        <input type="checkbox" id="sortDesc" checked> 降序排列
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="unassignedOnly"> 仅显示未分配任务
+                    </label>
+                </div>
+                
+                <button type="submit">搜索</button>
+                <button type="button" class="secondary" onclick="resetForm()">重置</button>
+            </form>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. 快速搜索</h2>
+        <div class="test-case">
+            <h3>快速搜索框</h3>
+            <div class="form-group">
+                <input type="text" id="quickSearch" placeholder="快速搜索任务...">
+                <button onclick="performQuickSearch()">搜索</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. 搜索结果</h2>
+        <div id="searchResults" class="results">
+            <p>请输入搜索条件并点击搜索按钮</p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. 任务统计</h2>
+        <div id="taskStats" class="stats-grid">
+            <!-- 统计卡片将在这里动态生成 -->
+        </div>
+    </div>
+
+    <script>
+        // 模拟任务数据
+        const mockTasks = [
+            {
+                id: 1,
+                title: 'Frontend React Development',
+                description: 'Build modern React components with TypeScript',
+                creator: 'alice',
+                assignee: null,
+                status: 0,
+                priority: 3,
+                difficulty: 7,
+                reward: 500,
+                deadline: Date.now() + 7 * 24 * 60 * 60 * 1000,
+                created_at: Date.now() - 24 * 60 * 60 * 1000,
+            },
+            {
+                id: 2,
+                title: 'Backend API Development',
+                description: 'Create REST API endpoints for React frontend',
+                creator: 'bob',
+                assignee: 'charlie',
+                status: 1,
+                priority: 2,
+                difficulty: 6,
+                reward: 400,
+                deadline: Date.now() + 5 * 24 * 60 * 60 * 1000,
+                created_at: Date.now() - 2 * 24 * 60 * 60 * 1000,
+            },
+            {
+                id: 3,
+                title: 'Database Schema Design',
+                description: 'Design PostgreSQL schema for the application',
+                creator: 'alice',
+                assignee: null,
+                status: 0,
+                priority: 1,
+                difficulty: 4,
+                reward: 200,
+                deadline: Date.now() + 10 * 24 * 60 * 60 * 1000,
+                created_at: Date.now() - 5 * 24 * 60 * 60 * 1000,
+            },
+            {
+                id: 4,
+                title: 'Mobile App Development',
+                description: 'Create React Native mobile application',
+                creator: 'charlie',
+                assignee: null,
+                status: 0,
+                priority: 4,
+                difficulty: 8,
+                reward: 600,
+                deadline: Date.now() + 3 * 24 * 60 * 60 * 1000,
+                created_at: Date.now() - 3 * 24 * 60 * 60 * 1000,
+            },
+            {
+                id: 5,
+                title: 'UI/UX Design',
+                description: 'Design user interface mockups and prototypes',
+                creator: 'bob',
+                assignee: 'dave',
+                status: 2,
+                priority: 2,
+                difficulty: 5,
+                reward: 300,
+                deadline: Date.now() + 14 * 24 * 60 * 60 * 1000,
+                created_at: Date.now() - 14 * 24 * 60 * 60 * 1000,
+            },
+        ];
+
+        // 搜索函数
+        function searchTasks(searchParams) {
+            let filteredTasks = [...mockTasks];
+
+            // 关键词搜索
+            if (searchParams.keyword) {
+                filteredTasks = filteredTasks.filter(task => {
+                    const keyword = searchParams.keyword.toLowerCase();
+                    return task.title.toLowerCase().includes(keyword) ||
+                           task.description.toLowerCase().includes(keyword);
+                });
+            }
+
+            // 状态筛选
+            if (searchParams.status !== '') {
+                filteredTasks = filteredTasks.filter(task => task.status == searchParams.status);
+            }
+
+            // 优先级筛选
+            if (searchParams.priority !== '') {
+                filteredTasks = filteredTasks.filter(task => task.priority == searchParams.priority);
+            }
+
+            // 难度范围筛选
+            if (searchParams.difficultyMin || searchParams.difficultyMax) {
+                const min = searchParams.difficultyMin || 1;
+                const max = searchParams.difficultyMax || 10;
+                filteredTasks = filteredTasks.filter(task => 
+                    task.difficulty >= min && task.difficulty <= max
+                );
+            }
+
+            // 奖励范围筛选
+            if (searchParams.rewardMin || searchParams.rewardMax) {
+                const min = searchParams.rewardMin || 0;
+                const max = searchParams.rewardMax || Infinity;
+                filteredTasks = filteredTasks.filter(task => 
+                    task.reward >= min && task.reward <= max
+                );
+            }
+
+            // 创建者筛选
+            if (searchParams.creator) {
+                filteredTasks = filteredTasks.filter(task => 
+                    task.creator.toLowerCase().includes(searchParams.creator.toLowerCase())
+                );
+            }
+
+            // 未分配筛选
+            if (searchParams.unassignedOnly) {
+                filteredTasks = filteredTasks.filter(task => !task.assignee);
+            }
+
+            // 排序
+            if (searchParams.sortBy) {
+                filteredTasks.sort((a, b) => {
+                    let aValue = a[searchParams.sortBy];
+                    let bValue = b[searchParams.sortBy];
+                    
+                    if (searchParams.sortDesc) {
+                        return bValue - aValue;
+                    } else {
+                        return aValue - bValue;
+                    }
+                });
+            }
+
+            return filteredTasks;
+        }
+
+        // 快速搜索
+        function quickSearch(keyword) {
+            if (!keyword) return [];
+            
+            return mockTasks.filter(task => {
+                const keywordLower = keyword.toLowerCase();
+                return task.title.toLowerCase().includes(keywordLower) ||
+                       task.description.toLowerCase().includes(keywordLower);
+            });
+        }
+
+        // 高亮关键词
+        function highlightKeyword(text, keyword) {
+            if (!keyword) return text;
+            
+            const regex = new RegExp(`(${keyword})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        // 渲染搜索结果
+        function renderResults(tasks, keyword = '') {
+            const resultsContainer = document.getElementById('searchResults');
+            
+            if (tasks.length === 0) {
+                resultsContainer.innerHTML = '<p>没有找到匹配的任务</p>';
+                return;
+            }
+
+            const statusNames = ['待处理', '进行中', '已完成', '已取消'];
+            const priorityNames = ['', '低', '中', '高', '紧急'];
+            
+            let html = `<h3>找到 ${tasks.length} 个任务</h3>`;
+            
+            tasks.forEach(task => {
+                const statusClass = `status-${['pending', 'progress', 'completed', 'cancelled'][task.status]}`;
+                const title = highlightKeyword(task.title, keyword);
+                const description = highlightKeyword(task.description, keyword);
+                
+                html += `
+                    <div class="task-item ${statusClass}">
+                        <div class="task-title">${title}</div>
+                        <div>${description}</div>
+                        <div class="task-meta">
+                            <span>状态: ${statusNames[task.status]}</span>
+                            <span>优先级: ${priorityNames[task.priority]}</span>
+                            <span>难度: ${task.difficulty}/10</span>
+                            <span>奖励: ${task.reward}</span>
+                            <span>创建者: ${task.creator}</span>
+                            ${task.assignee ? `<span>执行者: ${task.assignee}</span>` : '<span>未分配</span>'}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            resultsContainer.innerHTML = html;
+        }
+
+        // 渲染统计信息
+        function renderStats() {
+            const totalTasks = mockTasks.length;
+            const pendingCount = mockTasks.filter(t => t.status === 0).length;
+            const inProgressCount = mockTasks.filter(t => t.status === 1).length;
+            const completedCount = mockTasks.filter(t => t.status === 2).length;
+            const totalReward = mockTasks.reduce((sum, task) => sum + task.reward, 0);
+            const avgDifficulty = totalTasks > 0 ? 
+                Math.round(mockTasks.reduce((sum, task) => sum + task.difficulty, 0) / totalTasks) : 0;
+            const unassignedCount = mockTasks.filter(t => !t.assignee).length;
+
+            const statsContainer = document.getElementById('taskStats');
+            
+            statsContainer.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${totalTasks}</div>
+                    <div class="stat-label">总任务数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${pendingCount}</div>
+                    <div class="stat-label">待处理</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${inProgressCount}</div>
+                    <div class="stat-label">进行中</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${completedCount}</div>
+                    <div class="stat-label">已完成</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${totalReward}</div>
+                    <div class="stat-label">总奖励</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${avgDifficulty}</div>
+                    <div class="stat-label">平均难度</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${unassignedCount}</div>
+                    <div class="stat-label">未分配</div>
+                </div>
+            `;
+        }
+
+        // 表单提交处理
+        document.getElementById('searchForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const searchParams = {
+                keyword: document.getElementById('keyword').value,
+                status: document.getElementById('status').value,
+                priority: document.getElementById('priority').value,
+                difficultyMin: parseInt(document.getElementById('difficultyMin').value),
+                difficultyMax: parseInt(document.getElementById('difficultyMax').value),
+                rewardMin: parseInt(document.getElementById('rewardMin').value) || 0,
+                rewardMax: parseInt(document.getElementById('rewardMax').value) || Infinity,
+                creator: document.getElementById('creator').value,
+                sortBy: document.getElementById('sortBy').value,
+                sortDesc: document.getElementById('sortDesc').checked,
+                unassignedOnly: document.getElementById('unassignedOnly').checked,
+            };
+            
+            const results = searchTasks(searchParams);
+            renderResults(results, searchParams.keyword);
+        });
+
+        // 快速搜索
+        function performQuickSearch() {
+            const keyword = document.getElementById('quickSearch').value;
+            const results = quickSearch(keyword);
+            renderResults(results, keyword);
+        }
+
+        // 重置表单
+        function resetForm() {
+            document.getElementById('searchForm').reset();
+            document.getElementById('searchResults').innerHTML = '<p>请输入搜索条件并点击搜索按钮</p>';
+            updateDifficultyDisplay();
+        }
+
+        // 更新难度显示
+        function updateDifficultyDisplay() {
+            const min = document.getElementById('difficultyMin').value;
+            const max = document.getElementById('difficultyMax').value;
+            document.getElementById('difficultyDisplay').textContent = `${min} - ${max}`;
+        }
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 监听难度滑块变化
+            document.getElementById('difficultyMin').addEventListener('input', updateDifficultyDisplay);
+            document.getElementById('difficultyMax').addEventListener('input', updateDifficultyDisplay);
+            
+            // 快速搜索回车事件
+            document.getElementById('quickSearch').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performQuickSearch();
+                }
+            });
+            
+            // 初始化统计信息
+            renderStats();
+            
+            // 初始显示所有任务
+            renderResults(mockTasks);
+        });
+    </script>
+</body>
+</html> 
